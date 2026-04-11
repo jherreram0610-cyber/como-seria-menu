@@ -307,9 +307,11 @@ export default function ComoSeriaMenu() {
     if (hasBurgerMaster) {
       msg += "\n\n━━━━━━━━━━━━━━━\n";
       msg += "👑 *¡RECUERDA CALIFICARNOS EN TULIO RECOMIENDA!*\n\n";
-      msg += "📲 *Descarga la APP:*\n";
-      msg += "   🤖 Android: https://play.google.com/store/apps/details?id=com.tuliorecomienda.tulio_recomienda&hl=es_CO\n";
-      msg += "   🍎 iOS: https://apps.apple.com/bo/app/tulio/id1021193753\n\n";
+      msg += "*Opción 1:* Vota Aquí 👇\n";
+      msg += "🌐 https://tinyurl.com/28y8yy5r\n\n";
+      msg += "*Opción 2:* Si no pudiste votar con el enlace, descarga la App:\n";
+      msg += "🍎 iOS: https://tinyurl.com/28evo8jb\n";
+      msg += "🤖 Android: https://tinyurl.com/25oq59ug\n\n";
       msg += "🍔 *Identifica la Hamburguesa:* Ve a la sección de la corona (Master) y elige el Burger Master 2026.\n\n";
       msg += "⭐ *Vota:* Busca el restaurante, entra en él y selecciona \"¿Ya la probaste? Califícala\".\n";
       msg += "━━━━━━━━━━━━━━━";
