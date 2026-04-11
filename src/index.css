@@ -63,7 +63,7 @@ body {
 }
 .brand-text h1 {
   font-family: 'Bebas Neue', cursive; font-size: 24px; color: var(--white);
-  letter-spacing: 2px; line-height: 1;
+  letter-spacing: 1px; line-height: 1; text-transform: none;
 }
 .brand-text p { font-size: 11px; color: var(--gray-500); letter-spacing: 0.5px; }
 .cart-btn {
@@ -138,7 +138,9 @@ body {
 .cat-nav {
   display: flex; gap: 8px; padding: 14px 16px; overflow-x: auto;
   -webkit-overflow-scrolling: touch; scrollbar-width: none;
+  user-select: none; cursor: grab;
 }
+.cat-nav.dragging { cursor: grabbing; }
 .cat-nav::-webkit-scrollbar { display: none; }
 .cat-pill {
   flex-shrink: 0; display: flex; align-items: center; gap: 6px;
@@ -417,6 +419,111 @@ body {
 .footer-copy { font-size: 11px; color: var(--gray-300); margin-top: 12px; }
 .footer-powered { font-size: 11px; color: var(--gray-500); margin-top: 4px; }
 .footer-powered a { color: var(--green); text-decoration: none; font-weight: 600; }
+.footer-corxium {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  margin-top: 16px; opacity: 0.55;
+}
+.footer-corxium-label { font-size: 10px; color: #888; }
+.footer-corxium-logo { height: 38px; width: auto; object-fit: contain; filter: grayscale(1); }
+
+/* ─── SCROLL HINT (button) ─── */
+.cat-nav-wrap { position: relative; }
+.scroll-hint {
+  position: absolute; top: 0; bottom: 0;
+  width: 44px; pointer-events: all; border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--gray-600); animation: hintPulse 1.2s ease-in-out infinite;
+  padding: 0; z-index: 2;
+}
+.scroll-hint-right {
+  right: 0;
+  background: linear-gradient(to right, transparent, var(--nude-light) 70%);
+}
+.scroll-hint-left {
+  left: 0;
+  background: linear-gradient(to left, transparent, var(--nude-light) 70%);
+}
+@keyframes hintPulse {
+  0%, 100% { opacity: 1; transform: translateX(0); }
+  50%       { opacity: 0.6; transform: translateX(3px); }
+}
+
+/* ─── BURGER MASTER EVENT BANNER ─── */
+.bm-event-banner {
+  display: flex; align-items: flex-start; gap: 12px;
+  margin: 0 16px 16px;
+  background: linear-gradient(135deg, #1a1000, #0D0D0D);
+  border: 1px solid rgba(255,215,0,0.35); border-radius: var(--radius);
+  padding: 14px 16px;
+}
+.bm-event-icon { font-size: 24px; flex-shrink: 0; margin-top: 1px; }
+.bm-event-info { flex: 1; }
+.bm-event-title {
+  font-family: 'Bebas Neue', cursive; font-size: 17px; letter-spacing: 1.5px;
+  color: #FFD700; line-height: 1.2; margin-bottom: 5px;
+}
+.bm-event-dates { font-size: 12px; color: #ccc; margin-bottom: 5px; }
+.bm-event-disclaimer { font-size: 11px; color: rgba(255,200,0,0.6); font-style: italic; }
+
+/* ─── BURGER IMAGE IN CARD ─── */
+.bm-burger-img-wrap {
+  width: 100%; border-radius: var(--radius-sm); overflow: hidden;
+  margin: 8px 0; max-height: 180px;
+}
+.bm-burger-img { width: 100%; height: 180px; object-fit: cover; display: block; }
+
+/* ─── BURGER IMAGE IN MODAL ─── */
+.modal-burger-img-wrap {
+  width: 100%; border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 16px;
+}
+.modal-burger-img { width: 100%; height: 220px; object-fit: cover; display: block; }
+
+/* ─── BURGER MASTER 2026 CARD ─── */
+.bm-card {
+  background: linear-gradient(135deg, #1a1a1a 0%, #0D0D0D 100%);
+  border: 1.5px solid #333;
+}
+.bm-card:hover { border-color: #FFD700; }
+.bm-card .product-name { color: #FFD700; }
+.bm-card .product-desc { color: #aaa; }
+.bm-card .product-price { color: #FFD700; }
+.bm-card .add-btn { background: #FFD700; color: #000; font-weight: 800; }
+.bm-card .add-btn.added { background: var(--green-light); color: var(--white); }
+.bm-header {
+  display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 12px; gap: 12px;
+}
+.bm-logo {
+  width: 72px; height: 72px; object-fit: contain;
+  filter: brightness(1.2) contrast(1.1);
+}
+.bm-badge {
+  font-family: 'Bebas Neue', cursive; font-size: 13px; letter-spacing: 1.5px;
+  background: linear-gradient(135deg, #FFD700, #FFA500);
+  color: #000; padding: 4px 12px; border-radius: 20px;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+
+/* ─── MODAL BURGER MASTER ─── */
+.modal-bm-logo-wrap {
+  display: flex; justify-content: center; margin-bottom: 10px;
+  background: #111; border-radius: 12px; padding: 12px;
+}
+.modal-bm-logo {
+  width: 80px; height: 80px; object-fit: contain;
+  filter: brightness(1.2);
+}
+
+/* ─── TULIO RECOMIENDA NOTICE ─── */
+.bm-tulio-notice {
+  display: flex; align-items: flex-start; gap: 10px;
+  background: linear-gradient(135deg, rgba(255,215,0,0.08), rgba(255,165,0,0.08));
+  border: 1px solid rgba(255,215,0,0.3); border-radius: var(--radius-sm);
+  padding: 14px; margin-top: 4px;
+  font-size: 13px; color: var(--gray-700); line-height: 1.5;
+}
+.bm-tulio-icon { font-size: 20px; flex-shrink: 0; margin-top: 1px; }
+.bm-tulio-notice strong { color: var(--black); }
 
 /* ─── TOAST ─── */
 .toast {

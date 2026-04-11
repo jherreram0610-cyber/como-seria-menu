@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import logoImg from "/logo.png";
 import AdminDashboard from "./AdminDashboard";
 
@@ -35,6 +35,17 @@ const WHATSAPP_NUMBER = "573148792979";
 
 const MENU = {
   hamburguesas: [
+    {
+      id: "bm2026",
+      name: "Cali Vibes",
+      price: 21900,
+      desc: "Una propuesta que rompe lo tradicional al llevar dos sabores icónicos del valle del cauca: el dulzor intenso y caramelizado del maduro con textura crocante se fusiona con la acidez vibrante y cítrica de una mermelada de lulo, creando un contraste que sorprende desde el primer bocado. La jugosidad de la carne angus, el cremoso de la casa, el queso doble crema y el frescor del cogollo terminan de redondear una experiencia equilibrada entre lo dulce, lo salado y lo ácido.",
+      ingredients: [],
+      allowCustomization: false,
+      isBurgerMaster: true,
+      burgerImg: "/cali-vibes.png",
+      special: true,
+    },
     { id: "h1", name: "La Clásica", price: 25500, desc: "Carne angus 180gr, lechuga, tomate, cebolla, queso y salsa de la casa", ingredients: ["Carne angus", "Lechuga", "Tomate", "Cebolla", "Queso", "Salsa de la casa"], popular: true },
     { id: "h2", name: "Cheese Bacon", price: 27900, desc: "Doble carne angus 90gr, tocineta, doble queso y salsa de la casa", ingredients: ["Doble carne angus", "Tocineta", "Doble queso", "Salsa de la casa"] },
     { id: "h3", name: "Philly Pork", price: 32900, desc: "Carne angus 180gr, pan brioche, queso americano, pulled pork, cebolla crispy, queso Philadelphia", ingredients: ["Carne angus", "Pan brioche", "Queso americano", "Pulled pork", "Cebolla crispy", "Queso Philadelphia"], popular: true },
@@ -47,12 +58,12 @@ const MENU = {
     { id: "t2", name: "Tenders x6", price: 40900, desc: "6 tenders crujientes con papas", ingredients: [] },
   ],
   combos: [
-    { id: "c1", name: "Combo La Clásica", price: 35500, desc: "La Clásica + Papas fritas + Bebida a tu gusto", burger: "La Clásica", ingredients: [] },
-    { id: "c2", name: "Combo Philly Pork", price: 42900, desc: "Philly Pork + Papas fritas + Bebida a tu gusto", burger: "Philly Pork", ingredients: [] },
-    { id: "c3", name: "Combo Chicken Crunch", price: 36900, desc: "Chicken Crunch + Papas fritas + Bebida a tu gusto", burger: "Chicken Crunch", ingredients: [] },
-    { id: "c4", name: "Combo Cheese Bacon", price: 37900, desc: "Cheese Bacon + Papas fritas + Bebida a tu gusto", burger: "Cheese Bacon", ingredients: [] },
-    { id: "c5", name: "Combo La Crunchy", price: 38900, desc: "La Crunchy + Papas fritas + Bebida a tu gusto", burger: "La Crunchy", ingredients: [] },
-    { id: "c6", name: "Combo La Callejera", price: 38900, desc: "La Callejera + Papas fritas + Bebida a tu gusto", burger: "La Callejera", ingredients: [] },
+    { id: "c1", name: "Combo La Clásica",     price: 35500, desc: "La Clásica + Papas fritas + Bebida a tu gusto",     burger: "La Clásica",     ingredients: ["Carne angus", "Lechuga", "Tomate", "Cebolla", "Queso", "Salsa de la casa"] },
+    { id: "c2", name: "Combo Philly Pork",    price: 42900, desc: "Philly Pork + Papas fritas + Bebida a tu gusto",    burger: "Philly Pork",    ingredients: ["Carne angus", "Pan brioche", "Queso americano", "Pulled pork", "Cebolla crispy", "Queso Philadelphia"] },
+    { id: "c3", name: "Combo Chicken Crunch", price: 36900, desc: "Chicken Crunch + Papas fritas + Bebida a tu gusto", burger: "Chicken Crunch", ingredients: ["Pan brioche", "Tenders", "Queso americano", "Tocineta", "Tomate", "Lechuga"] },
+    { id: "c4", name: "Combo Cheese Bacon",   price: 37900, desc: "Cheese Bacon + Papas fritas + Bebida a tu gusto",   burger: "Cheese Bacon",   ingredients: ["Doble carne angus", "Tocineta", "Doble queso", "Salsa de la casa"] },
+    { id: "c5", name: "Combo La Crunchy",     price: 38900, desc: "La Crunchy + Papas fritas + Bebida a tu gusto",     burger: "La Crunchy",     ingredients: ["Carne angus", "Queso crema", "Tocineta", "Cebolla crispy", "Queso", "Salsa BBQ"] },
+    { id: "c6", name: "Combo La Callejera",   price: 38900, desc: "La Callejera + Papas fritas + Bebida a tu gusto",   burger: "La Callejera",   ingredients: ["Carne angus", "Pan brioche", "Tocineta", "Queso doble crema", "Cebolla", "Tomate", "Ripio de papa"] },
   ],
   adiciones: [
     { id: "a1", name: "Tocineta", price: 2500 },
@@ -66,10 +77,18 @@ const MENU = {
     { id: "a9", name: "Aros de cebolla (cambio)", price: 1000 },
   ],
   bebidas: [
-    { id: "b1", name: "Agua", price: 5000 },
-    { id: "b2", name: "Gaseosa", price: 6000 },
-    { id: "b3", name: "Soda", price: 6000 },
-    { id: "b4", name: "Té", price: 6500 },
+    { id: "b1",  name: "Coca Cola",           price: 6500 },
+    { id: "b2",  name: "Coca Cola Zero",       price: 6500 },
+    { id: "b3",  name: "Sprite",               price: 6500 },
+    { id: "b4",  name: "Quatro",               price: 6500 },
+    { id: "b5",  name: "Ginger",               price: 6500 },
+    { id: "b6",  name: "Kola Román",           price: 6500 },
+    { id: "b7",  name: "Fuze Tea Limón",       price: 6500 },
+    { id: "b8",  name: "Fuze Tea Durazno",     price: 6500 },
+    { id: "b9",  name: "Agua Brisa Manzana",   price: 6500 },
+    { id: "b10", name: "Agua Brisa Maracuyá",  price: 6500 },
+    { id: "b11", name: "Agua",                 price: 5000 },
+    { id: "b12", name: "Agua con Gas",         price: 5000 },
   ],
 };
 
@@ -111,9 +130,66 @@ export default function ComoSeriaMenu() {
   const [customerName, setCustomerName] = useState("");
   const [nameError, setNameError] = useState(false);
   const [logoError, setLogoError] = useState(false);
+  const [showLeftArrow, setShowLeftArrow] = useState(false);
+  const [showRightArrow, setShowRightArrow] = useState(true);
   const sectionRefs = useRef({});
   const navRef = useRef(null);
   const nameInputRef = useRef(null);
+
+  // Evaluar qué flechas mostrar según la posición del scroll
+  const checkScrollArrows = useCallback(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    setShowLeftArrow(nav.scrollLeft > 20);
+    setShowRightArrow(nav.scrollWidth - nav.clientWidth - nav.scrollLeft > 20);
+  }, []);
+
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+
+    checkScrollArrows();
+    window.addEventListener("resize", checkScrollArrows);
+    nav.addEventListener("scroll", checkScrollArrows, { passive: true });
+
+    return () => {
+      window.removeEventListener("resize", checkScrollArrows);
+      nav.removeEventListener("scroll", checkScrollArrows);
+    };
+  }, [checkScrollArrows]);
+
+  // Drag-to-scroll con mouse en desktop
+  useEffect(() => {
+    const nav = navRef.current;
+    if (!nav) return;
+    let isDown = false;
+    let startX = 0;
+    let scrollLeft = 0;
+    const onMouseDown = (e) => {
+      isDown = true;
+      nav.classList.add("dragging");
+      startX = e.pageX - nav.offsetLeft;
+      scrollLeft = nav.scrollLeft;
+    };
+    const onMouseLeave = () => { isDown = false; nav.classList.remove("dragging"); };
+    const onMouseUp   = () => { isDown = false; nav.classList.remove("dragging"); };
+    const onMouseMove = (e) => {
+      if (!isDown) return;
+      e.preventDefault();
+      const x = e.pageX - nav.offsetLeft;
+      nav.scrollLeft = scrollLeft - (x - startX) * 1.2;
+    };
+    nav.addEventListener("mousedown",  onMouseDown);
+    nav.addEventListener("mouseleave", onMouseLeave);
+    nav.addEventListener("mouseup",    onMouseUp);
+    nav.addEventListener("mousemove",  onMouseMove);
+    return () => {
+      nav.removeEventListener("mousedown",  onMouseDown);
+      nav.removeEventListener("mouseleave", onMouseLeave);
+      nav.removeEventListener("mouseup",    onMouseUp);
+      nav.removeEventListener("mousemove",  onMouseMove);
+    };
+  }, []);
 
   // Modal state
   const [modalQty, setModalQty] = useState(1);
@@ -225,6 +301,20 @@ export default function ComoSeriaMenu() {
     msg += `*TOTAL: ${fmt(cartTotal)}*\n\n`;
     msg += "📍 Recojo en: Country Mall, Jamundí\n";
     msg += "⏰ Confirmar tiempo estimado por favor";
+
+    // Mensaje especial Burger Master si está en el pedido
+    const hasBurgerMaster = cart.some((i) => i.id === "bm2026");
+    if (hasBurgerMaster) {
+      msg += "\n\n━━━━━━━━━━━━━━━\n";
+      msg += "👑 *¡RECUERDA CALIFICARNOS EN TULIO RECOMIENDA!*\n\n";
+      msg += "📲 *Descarga la APP:*\n";
+      msg += "   🤖 Android: https://play.google.com/store/apps/details?id=com.tuliorecomienda.tulio_recomienda&hl=es_CO\n";
+      msg += "   🍎 iOS: https://apps.apple.com/bo/app/tulio/id1021193753\n\n";
+      msg += "🍔 *Identifica la Hamburguesa:* Ve a la sección de la corona (Master) y elige el Burger Master 2026.\n\n";
+      msg += "⭐ *Vota:* Busca el restaurante, entra en él y selecciona \"¿Ya la probaste? Califícala\".\n";
+      msg += "━━━━━━━━━━━━━━━";
+    }
+
     return encodeURIComponent(msg);
   };
 
@@ -282,7 +372,7 @@ export default function ComoSeriaMenu() {
                 )}
               </div>
               <div className="brand-text">
-                <h1>COMO SERIA</h1>
+                <h1>Cómo Sería</h1>
                 <p>Menú Digital · Pedidos para recoger</p>
               </div>
             </div>
@@ -303,18 +393,60 @@ export default function ComoSeriaMenu() {
         </header>
 
         {/* CATEGORY NAV */}
-        <nav className="cat-nav" ref={navRef}>
-          {Object.entries(CATEGORY_META).map(([key, val]) => (
+        <div className="cat-nav-wrap">
+          <nav className="cat-nav" ref={navRef}>
+            {Object.entries(CATEGORY_META).map(([key, val]) => (
+              <button
+                key={key}
+                id={`cat-${key}`}
+                className={`cat-pill ${activeCategory === key ? "active" : ""}`}
+                onClick={() => scrollToSection(key)}
+              >
+                <span className="cat-emoji">{val.icon}</span> {val.label}
+              </button>
+            ))}
+          </nav>
+          {/* Flecha izquierda */}
+          {showLeftArrow && (
             <button
-              key={key}
-              id={`cat-${key}`}
-              className={`cat-pill ${activeCategory === key ? "active" : ""}`}
-              onClick={() => scrollToSection(key)}
+              className="scroll-hint scroll-hint-left"
+              aria-label="Anterior categoría"
+              onClick={() => {
+                const nav = navRef.current;
+                if (nav) nav.scrollBy({ left: -200, behavior: "smooth" });
+              }}
             >
-              <span className="cat-emoji">{val.icon}</span> {val.label}
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
             </button>
-          ))}
-        </nav>
+          )}
+          {/* Flecha derecha */}
+          {showRightArrow && (
+            <button
+              className="scroll-hint scroll-hint-right"
+              aria-label="Ver más categorías"
+              onClick={() => {
+                const nav = navRef.current;
+                if (nav) nav.scrollBy({ left: 200, behavior: "smooth" });
+              }}
+            >
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </button>
+          )}
+        </div>
+
+        {/* BURGER MASTER EVENT BANNER */}
+        <div className="bm-event-banner">
+          <div className="bm-event-icon">👑</div>
+          <div className="bm-event-info">
+            <div className="bm-event-title">Burger Master 2026 — Cali Vibes</div>
+            <div className="bm-event-dates">🗓️ Lun 20 – Dom 26 de abril &nbsp;|&nbsp; ⏰ 12:00 m – 10:00 pm</div>
+            <div className="bm-event-disclaimer">⚠️ El horario de cierre puede adelantarse si se agotan las hamburguesas.</div>
+          </div>
+        </div>
 
         {/* CUSTOMER NAME FIELD */}
         <div className="customer-banner">
@@ -366,14 +498,26 @@ export default function ComoSeriaMenu() {
             {items.map((item, idx) => {
               const inCartQty = getItemQtyInCart(item.id);
               const isSimple = catKey === "adiciones" || catKey === "bebidas";
+              const isBM = item.isBurgerMaster;
               return (
                 <div
                   key={item.id}
                   id={`product-${item.id}`}
-                  className={`product-card ${inCartQty > 0 ? "in-cart" : ""}`}
+                  className={`product-card ${inCartQty > 0 ? "in-cart" : ""} ${isBM ? "bm-card" : ""}`}
                   style={{ animationDelay: `${idx * 0.05}s` }}
                   onClick={() => !isSimple && openModal(item, catKey)}
                 >
+                  {isBM && (
+                    <div className="bm-header">
+                      <img src="/bm2026.png" alt="Burger Master 2026" className="bm-logo" />
+                      <span className="bm-badge">👑 EDICIÓN ESPECIAL</span>
+                    </div>
+                  )}
+                  {isBM && item.burgerImg && (
+                    <div className="bm-burger-img-wrap">
+                      <img src={item.burgerImg} alt={item.name} className="bm-burger-img" />
+                    </div>
+                  )}
                   <div className="product-top">
                     <div className="product-info">
                       <div className="product-name">
@@ -429,6 +573,10 @@ export default function ComoSeriaMenu() {
           <div className="footer-loc"><IconMapPin /> Country Mall, Jamundí - Valle del Cauca</div>
           <p className="footer-copy">© 2025 Como Seria. Todos los derechos reservados.</p>
           <p className="footer-powered">Instagram: <a href="https://www.instagram.com/somoscomoseria" target="_blank" rel="noopener">@somoscomoseria</a></p>
+          <div className="footer-corxium">
+            <span className="footer-corxium-label">Desarrollado por</span>
+            <img src="/corxium.svg" alt="Corxium SAS" className="footer-corxium-logo" />
+          </div>
         </footer>
 
         {/* FLOATING BAR */}
@@ -459,16 +607,31 @@ export default function ComoSeriaMenu() {
             <div className="modal-handle" />
             <div className="modal-header">
               <div>
+                {modalItem.isBurgerMaster && (
+                  <div className="modal-bm-logo-wrap">
+                    <img src="/bm2026.png" alt="Burger Master 2026" className="modal-bm-logo" />
+                  </div>
+                )}
                 <h2>{modalItem.name}</h2>
                 <p>{modalItem.desc}</p>
               </div>
               <button className="modal-close" onClick={closeModal}><IconX /></button>
             </div>
             <div className="modal-body">
-              {modalItem.ingredients && modalItem.ingredients.length > 0 && (
+
+              {/* Imagen de la hamburguesa en modal */}
+              {modalItem.burgerImg && (
+                <div className="modal-burger-img-wrap">
+                  <img src={modalItem.burgerImg} alt={modalItem.name} className="modal-burger-img" />
+                </div>
+              )}
+
+              {/* Ingredientes — solo si allowCustomization no es false */}
+              {modalItem.allowCustomization !== false && modalItem.ingredients && modalItem.ingredients.length > 0 && (
                 <div className="modal-section">
                   <div className="modal-section-title">
-                    🥬 Ingredientes <span className="optional">(toca para quitar)</span>
+                    {modalItem.category === "combos" ? "🍔 Personalizar hamburguesa" : "🥬 Ingredientes"}
+                    <span className="optional">(toca para quitar)</span>
                   </div>
                   <div className="ingredient-chips">
                     {modalItem.ingredients.map((ing) => (
@@ -484,23 +647,27 @@ export default function ComoSeriaMenu() {
                 </div>
               )}
 
-              <div className="modal-section">
-                <div className="modal-section-title">
-                  ➕ Adiciones <span className="optional">(opcional)</span>
-                </div>
-                {MENU.adiciones.map((ad) => (
-                  <div key={ad.id} className="adicion-row" onClick={() => toggleAdicion(ad)}>
-                    <div className="adicion-left">
-                      <div className={`adicion-check ${selectedAdiciones.find((a) => a.id === ad.id) ? "checked" : ""}`}>
-                        {selectedAdiciones.find((a) => a.id === ad.id) && <IconCheck />}
-                      </div>
-                      <span className="adicion-name">{ad.name}</span>
-                    </div>
-                    <span className="adicion-price">+{fmt(ad.price)}</span>
+              {/* Adiciones — solo si allowCustomization no es false */}
+              {modalItem.allowCustomization !== false && (
+                <div className="modal-section">
+                  <div className="modal-section-title">
+                    ➕ Adiciones <span className="optional">(opcional)</span>
                   </div>
-                ))}
-              </div>
+                  {MENU.adiciones.map((ad) => (
+                    <div key={ad.id} className="adicion-row" onClick={() => toggleAdicion(ad)}>
+                      <div className="adicion-left">
+                        <div className={`adicion-check ${selectedAdiciones.find((a) => a.id === ad.id) ? "checked" : ""}`}>
+                          {selectedAdiciones.find((a) => a.id === ad.id) && <IconCheck />}
+                        </div>
+                        <span className="adicion-name">{ad.name}</span>
+                      </div>
+                      <span className="adicion-price">+{fmt(ad.price)}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
+              {/* Comentarios */}
               <div className="modal-section">
                 <div className="modal-section-title">
                   💬 Comentarios <span className="optional">(opcional)</span>
@@ -513,6 +680,17 @@ export default function ComoSeriaMenu() {
                   maxLength={200}
                 />
               </div>
+
+              {/* Info Burger Master */}
+              {modalItem.isBurgerMaster && (
+                <div className="bm-tulio-notice">
+                  <span className="bm-tulio-icon">👑</span>
+                  <div>
+                    <strong>¡Califica esta hamburguesa!</strong><br />
+                    Descarga <em>Tulio Recomienda</em> y deja tu voto en la sección Master.
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="modal-footer">
