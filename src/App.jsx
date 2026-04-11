@@ -312,8 +312,9 @@ export default function ComoSeriaMenu() {
       msg += "*Opción 2:* Si no pudiste votar con el enlace, descarga la App:\n";
       msg += "🍎 iOS: https://tinyurl.com/28evo8jb\n";
       msg += "🤖 Android: https://tinyurl.com/25oq59ug\n\n";
-      msg += "🍔 *Identifica la Hamburguesa:* Ve a la sección de la corona (Master) y elige el Burger Master 2026.\n\n";
-      msg += "⭐ *Vota:* Busca el restaurante, entra en él y selecciona \"¿Ya la probaste? Califícala\".\n";
+      msg += "📱 *Regístrate:* Ingresa con tu número de celular.\n\n";
+      msg += "🍔 *Identifica la Hamburguesa:* Ve a la sección de la corona (Master) y elige el Burger Master 2026 y ubicación Cali y Valle del Cauca.\n\n";
+      msg += "⭐ *Vota:* Busca el restaurante, entra en él y selecciona \"¿Ya la probaste? y Califícala\".\n";
       msg += "━━━━━━━━━━━━━━━";
     }
 
