@@ -308,10 +308,10 @@ export default function ComoSeriaMenu() {
       msg += "\n\n━━━━━━━━━━━━━━━\n";
       msg += "👑 *¡RECUERDA CALIFICARNOS EN TULIO RECOMIENDA!*\n\n";
       msg += "*Opción 1:* Vota Aquí 👇\n";
-      msg += "🌐 https://tinyurl.com/28y8yy5r\n\n";
+      msg += "🌐 https://bit.ly/VotaComoSeria\n\n";
       msg += "*Opción 2:* Si no pudiste votar con el enlace, descarga la App:\n";
       msg += "🍎 iOS: https://tinyurl.com/28evo8jb\n";
-      msg += "🤖 Android: https://tinyurl.com/25oq59ug\n\n";
+      msg += "🤖 Android: https://bit.ly/TulioApp\n\n";
       msg += "📱 *Regístrate:* Ingresa con tu número de celular.\n\n";
       msg += "🍔 *Identifica la Hamburguesa:* Ve a la sección de la corona (Master) y elige el Burger Master 2026 y ubicación Cali y Valle del Cauca.\n\n";
       msg += "⭐ *Vota:* Busca el restaurante, entra en él y selecciona \"¿Ya la probaste? y Califícala\".\n";
