@@ -31,19 +31,19 @@ function saveOrder({ customerName, cart, cartTotal }) {
 }
 
 // ─── DATA ────────────────────────────────────────────────────────────────────
-const WHATSAPP_NUMBER = "573148792979";
+const WHATSAPP_NUMBER = "573026233522";
 
 const MENU = {
   hamburguesas: [
     {
       id: "bm2026",
       name: "Cali Vibes",
-      price: 21900,
-      desc: "Una propuesta que rompe lo tradicional al llevar dos sabores icónicos del valle del cauca: el dulzor intenso y caramelizado del maduro con textura crocante se fusiona con la acidez vibrante y cítrica de una mermelada de lulo, creando un contraste que sorprende desde el primer bocado. La jugosidad de la carne angus, el cremoso de la casa, el queso doble crema y el frescor del cogollo terminan de redondear una experiencia equilibrada entre lo dulce, lo salado y lo ácido.",
-      ingredients: [],
-      allowCustomization: false,
+      price: 30900,
+      desc: "Carne Angus 180gr, Mermelada de lulo, Maduro caramelizado, Lechuga y Salsa de la casa",
+      ingredients: ["Pan", "Carne Angus", "Lechuga", "Maduro caramelizado", "Mermelada de lulo", "Salsa de la casa"],
+      allowCustomization: true,
       isBurgerMaster: true,
-      burgerImg: "/cali-vibes.png",
+      burgerImg: null,
       special: true,
     },
     { id: "h1", name: "La Clásica", price: 25500, desc: "Carne angus 180gr, lechuga, tomate, cebolla, queso y salsa de la casa", ingredients: ["Carne angus", "Lechuga", "Tomate", "Cebolla", "Queso", "Salsa de la casa"], popular: true },
@@ -77,18 +77,20 @@ const MENU = {
     { id: "a9", name: "Aros de cebolla (cambio)", price: 1000 },
   ],
   bebidas: [
-    { id: "b1",  name: "Coca Cola",           price: 6500 },
-    { id: "b2",  name: "Coca Cola Zero",       price: 6500 },
-    { id: "b3",  name: "Sprite",               price: 6500 },
-    { id: "b4",  name: "Quatro",               price: 6500 },
-    { id: "b5",  name: "Ginger",               price: 6500 },
-    { id: "b6",  name: "Kola Román",           price: 6500 },
+    { id: "b1",  name: "Coca Cola",           price: 6000 },
+    { id: "b2",  name: "Coca Cola Zero",       price: 6000 },
+    { id: "b3",  name: "Sprite",               price: 6000 },
+    { id: "b4",  name: "Quatro",               price: 6000 },
+    { id: "b5",  name: "Ginger",               price: 6000 },
+    { id: "b6",  name: "Kola Román",           price: 6000 },
     { id: "b7",  name: "Fuze Tea Limón",       price: 6500 },
     { id: "b8",  name: "Fuze Tea Durazno",     price: 6500 },
-    { id: "b9",  name: "Agua Brisa Manzana",   price: 6500 },
-    { id: "b10", name: "Agua Brisa Maracuyá",  price: 6500 },
-    { id: "b11", name: "Agua",                 price: 5000 },
-    { id: "b12", name: "Agua con Gas",         price: 5000 },
+    { id: "b9",  name: "Fuze Tea Manzana",     price: 6500 },
+    { id: "b10", name: "Agua Brisa Manzana",   price: 6000 },
+    { id: "b11", name: "Agua Brisa Maracuyá",  price: 6000 },
+    { id: "b12", name: "Agua Brisa Limón",     price: 6000 },
+    { id: "b13", name: "Agua",                 price: 5000 },
+    { id: "b14", name: "Agua con Gas",         price: 5000 },
   ],
 };
 
@@ -99,6 +101,19 @@ const CATEGORY_META = {
   adiciones: { icon: "➕", label: "Adiciones" },
   bebidas: { icon: "🥤", label: "Bebidas" },
 };
+
+const DELIVERY_LOCATIONS = [
+  { id: "cc", name: "Ciudad Country", price: 5000 },
+  { id: "cs", name: "5 Soles", price: 7000 },
+  { id: "ec", name: "El Castillo", price: 8000 },
+  { id: "pg", name: "Pangola", price: 8000 },
+];
+
+const PAYMENT_METHODS = [
+  { id: "qr-bold", label: "QR de Bold" },
+  { id: "nequi", label: "Nequi" },
+  { id: "transferencia", label: "Transferencia" },
+];
 
 const fmt = (n) => "$" + n.toLocaleString("es-CO");
 
@@ -195,7 +210,14 @@ export default function ComoSeriaMenu() {
   const [modalQty, setModalQty] = useState(1);
   const [removedIngredients, setRemovedIngredients] = useState([]);
   const [selectedAdiciones, setSelectedAdiciones] = useState([]);
+  const [selectedBebida, setSelectedBebida] = useState(null);
   const [comment, setComment] = useState("");
+  const [agrandarPapas, setAgrandarPapas] = useState(false);
+  const [editingCartId, setEditingCartId] = useState(null);
+  const [paymentMethod, setPaymentMethod] = useState(null);
+  const [deliveryType, setDeliveryType] = useState("recoger"); // "recoger" o "domicilio"
+  const [deliveryLocation, setDeliveryLocation] = useState(null); // selección de ubicación
+  const [deliveryAddress, setDeliveryAddress] = useState(""); // dirección
 
   const showToast = useCallback((msg) => {
     setToast(msg);
@@ -206,14 +228,33 @@ export default function ComoSeriaMenu() {
   const cartTotal = cart.reduce((sum, i) => sum + i.totalPrice * i.qty, 0);
 
   const openModal = (item, category) => {
+    setEditingCartId(null);
     setModalItem({ ...item, category });
     setModalQty(1);
     setRemovedIngredients([]);
     setSelectedAdiciones([]);
+    setSelectedBebida(category === "combos" ? MENU.bebidas[0] : null);
     setComment("");
+    setAgrandarPapas(false);
   };
 
-  const closeModal = () => setModalItem(null);
+  const openModalForEdit = (cartItem) => {
+    const baseItem = MENU[cartItem.category]?.find((i) => i.id === cartItem.id) || cartItem;
+    setEditingCartId(cartItem.cartId);
+    setModalItem({ ...baseItem, category: cartItem.category });
+    setModalQty(cartItem.qty);
+    setRemovedIngredients(cartItem.removedIngredients || []);
+    setSelectedAdiciones(cartItem.adiciones || []);
+    setSelectedBebida(cartItem.bebida || (cartItem.category === "combos" ? MENU.bebidas[0] : null));
+    setComment(cartItem.comment || "");
+    setAgrandarPapas(cartItem.agrandarPapas || false);
+    setShowCart(false);
+  };
+
+  const closeModal = () => {
+    setModalItem(null);
+    setEditingCartId(null);
+  };
 
   const toggleIngredient = (ing) => {
     setRemovedIngredients((prev) =>
@@ -230,23 +271,52 @@ export default function ComoSeriaMenu() {
   };
 
   const addToCart = () => {
-    if (!modalItem) return;
+    if (!modalItem || editingCartId) return;
     const adicionesTotal = selectedAdiciones.reduce((s, a) => s + a.price, 0);
-    const unitPrice = modalItem.price + adicionesTotal;
+    const upsize = agrandarPapas ? 2000 : 0;
+    const unitPrice = modalItem.price + adicionesTotal + upsize;
     const cartItem = {
       cartId: Date.now() + Math.random(),
       id: modalItem.id,
       name: modalItem.name,
       basePrice: modalItem.price,
+      bebida: selectedBebida,
       adiciones: [...selectedAdiciones],
       removedIngredients: [...removedIngredients],
       comment,
+      agrandarPapas,
       qty: modalQty,
       totalPrice: unitPrice,
       category: modalItem.category,
     };
     setCart((prev) => [...prev, cartItem]);
     showToast(`${modalItem.name} agregado ✓`);
+    closeModal();
+  };
+
+  const saveCartChanges = () => {
+    if (!modalItem || !editingCartId) return;
+    const adicionesTotal = selectedAdiciones.reduce((s, a) => s + a.price, 0);
+    const upsize = agrandarPapas ? 2000 : 0;
+    const unitPrice = modalItem.price + adicionesTotal + upsize;
+    setCart((prev) => prev.map((item) => {
+      if (item.cartId !== editingCartId) return item;
+      return {
+        ...item,
+        id: modalItem.id,
+        name: modalItem.name,
+        basePrice: modalItem.price,
+        bebida: selectedBebida,
+        adiciones: [...selectedAdiciones],
+        removedIngredients: [...removedIngredients],
+        comment,
+        agrandarPapas,
+        qty: modalQty,
+        totalPrice: unitPrice,
+        category: modalItem.category,
+      };
+    }));
+    showToast(`${modalItem.name} actualizado ✓`);
     closeModal();
   };
 
@@ -289,8 +359,14 @@ export default function ComoSeriaMenu() {
       if (item.removedIngredients.length > 0) {
         msg += `   ❌ Sin: ${item.removedIngredients.join(", ")}\n`;
       }
+      if (item.bebida) {
+        msg += `   🥤 Bebida: ${item.bebida.name}\n`;
+      }
       if (item.adiciones.length > 0) {
         msg += `   ➕ Con: ${item.adiciones.map((a) => a.name).join(", ")}\n`;
+      }
+      if (item.agrandarPapas) {
+        msg += `   🍟 Papas Grandes (+$2.000)\n`;
       }
       if (item.comment) {
         msg += `   💬 ${item.comment}\n`;
@@ -298,24 +374,22 @@ export default function ComoSeriaMenu() {
       msg += `   💲 ${fmt(item.totalPrice * item.qty)}\n\n`;
     });
     msg += "━━━━━━━━━━━━━━━\n";
-    msg += `*TOTAL: ${fmt(cartTotal)}*\n\n`;
-    msg += "📍 Recojo en: Country Mall, Jamundí\n";
-    msg += "⏰ Confirmar tiempo estimado por favor";
-
-    // Mensaje especial Burger Master si está en el pedido
-    const hasBurgerMaster = cart.some((i) => i.id === "bm2026");
-    if (hasBurgerMaster) {
-      msg += "\n\n━━━━━━━━━━━━━━━\n";
-      msg += "👑 *¡RECUERDA CALIFICARNOS EN TULIO RECOMIENDA!*\n\n";
-      msg += "*Opción 1:* Vota Aquí 👇\n";
-      msg += "🌐 https://bit.ly/VotaComoSeria\n\n";
-      msg += "*Opción 2:* Si no pudiste votar con el enlace, descarga la App:\n";
-      msg += "🍎 iOS: https://tinyurl.com/28evo8jb\n";
-      msg += "🤖 Android: https://bit.ly/TulioApp\n\n";
-      msg += "📱 *Regístrate:* Ingresa con tu número de celular.\n\n";
-      msg += "🍔 *Identifica la Hamburguesa:* Ve a la sección de la corona (Master) y elige el Burger Master 2026 y ubicación Cali y Valle del Cauca.\n\n";
-      msg += "⭐ *Vota:* Busca el restaurante, entra en él y selecciona \"¿Ya la probaste? y Califícala\".\n";
-      msg += "━━━━━━━━━━━━━━━";
+    const deliveryFee = deliveryLocation?.price || 0;
+    const totalWithDelivery = cartTotal + deliveryFee;
+    msg += `*TOTAL: ${fmt(totalWithDelivery)}*\n\n`;
+    if (paymentMethod) {
+      const paymentLabel = PAYMENT_METHODS.find((m) => m.id === paymentMethod)?.label || paymentMethod;
+      msg += `💳 Método de pago: ${paymentLabel}\n\n`;
+    }
+    if (deliveryType === "recoger") {
+      msg += "📍 Tipo: Para Recoger en Country Mall, Jamundí\n";
+      msg += "⏰ Confirmar tiempo estimado por favor";
+    } else {
+      msg += `📍 Tipo: Domicilio\n`;
+      msg += `📮 Ubicación: ${deliveryLocation?.name}\n`;
+      msg += `💰 Costo envío: ${fmt(deliveryLocation?.price)}\n`;
+      msg += `🏠 Dirección: ${deliveryAddress}\n`;
+      msg += "⏰ Confirmar tiempo estimado de entrega";
     }
 
     return encodeURIComponent(msg);
@@ -327,6 +401,12 @@ export default function ComoSeriaMenu() {
       setNameError(true);
       nameInputRef.current?.focus();
       nameInputRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
+    if (deliveryType === "domicilio" && (!deliveryLocation || !deliveryAddress.trim())) {
+      return;
+    }
+    if (!paymentMethod) {
       return;
     }
     // Save order to localStorage for metrics
@@ -376,7 +456,7 @@ export default function ComoSeriaMenu() {
               </div>
               <div className="brand-text">
                 <h1>Cómo Sería</h1>
-                <p>Menú Digital · Pedidos para recoger</p>
+                <p>Menú Digital · Pedidos para recoger y domicilios en Ciudad Country, 5 Soles, El Castillo y Pangola</p>
               </div>
             </div>
             <button className="cart-btn" id="btn-open-cart" onClick={() => setShowCart(true)}>
@@ -389,9 +469,8 @@ export default function ComoSeriaMenu() {
               <IconMapPin /> Country Mall, Jamundí
             </div>
             <div className="header-info-item">
-              <IconClock /> Abierto
+              <IconClock /> Horario: mar-jue 5:30pm - 10:00pm | vie-dom y festivos 5:30pm - 10:30pm
             </div>
-            <span className="header-mode-tag">Para recoger</span>
           </div>
         </header>
 
@@ -439,16 +518,6 @@ export default function ComoSeriaMenu() {
               </svg>
             </button>
           )}
-        </div>
-
-        {/* BURGER MASTER EVENT BANNER */}
-        <div className="bm-event-banner">
-          <div className="bm-event-icon">👑</div>
-          <div className="bm-event-info">
-            <div className="bm-event-title">Burger Master 2026 — Cali Vibes</div>
-            <div className="bm-event-dates">🗓️ Lun 20 – Dom 26 de abril &nbsp;|&nbsp; ⏰ 12:00 m – 10:00 pm</div>
-            <div className="bm-event-disclaimer">⚠️ El horario de cierre puede adelantarse si se agotan las hamburguesas.</div>
-          </div>
         </div>
 
         {/* CUSTOMER NAME FIELD */}
@@ -532,7 +601,7 @@ export default function ComoSeriaMenu() {
                           <span className="combo-badge">🔥 Combo</span>
                         )}
                       </div>
-                      <p className="product-desc">{item.desc}</p>
+                      {item.desc && <p className="product-desc">{item.desc}</p>}
                       {catKey === "combos" && (
                         <p className="combo-includes">
                           Incluye: {item.burger} + Papas + Bebida &nbsp;|&nbsp; Aros de cebolla +$1.000
@@ -572,9 +641,9 @@ export default function ComoSeriaMenu() {
 
         {/* FOOTER */}
         <footer className="footer">
-          <div className="footer-brand">COMO SERIA</div>
+          <div className="footer-brand">CÓMO SERÍA</div>
           <div className="footer-loc"><IconMapPin /> Country Mall, Jamundí - Valle del Cauca</div>
-          <p className="footer-copy">© 2025 Como Seria. Todos los derechos reservados.</p>
+          <p className="footer-copy">© 2025 Cómo Sería. Todos los derechos reservados.</p>
           <p className="footer-powered">Instagram: <a href="https://www.instagram.com/somoscomoseria" target="_blank" rel="noopener">@somoscomoseria</a></p>
           <div className="footer-corxium">
             <span className="footer-corxium-label">Desarrollado por</span>
@@ -670,7 +739,48 @@ export default function ComoSeriaMenu() {
                 </div>
               )}
 
-              {/* Comentarios */}
+              {/* Selección de bebida para combos */}
+              {modalItem.category === "combos" && (
+                <div className="modal-section">
+                  <div className="modal-section-title">
+                    🥤 Bebida incluida <span className="optional">(elige una)</span>
+                  </div>
+                  {MENU.bebidas.map((bebida) => (
+                    <div
+                      key={bebida.id}
+                      className={`adicion-row ${selectedBebida?.id === bebida.id ? "selected" : ""}`}
+                      onClick={() => setSelectedBebida(bebida)}
+                    >
+                      <div className="adicion-left">
+                        <div className={`adicion-check ${selectedBebida?.id === bebida.id ? "checked" : ""}`}>
+                          {selectedBebida?.id === bebida.id && <IconCheck />}
+                        </div>
+                        <span className="adicion-name">{bebida.name}</span>
+                      </div>
+                      <span className="adicion-price">Incluido</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Papas Grandes - Solo para combos */}
+              {modalItem.category === "combos" && (
+                <div className="modal-section">
+                  <div className="modal-section-title">
+                    🍟 Agrandar Papas <span className="optional">(opcional)</span>
+                  </div>
+                  <div className="adicion-row" onClick={() => setAgrandarPapas(!agrandarPapas)}>
+                    <div className="adicion-left">
+                      <div className={`adicion-check ${agrandarPapas ? "checked" : ""}`}>
+                        {agrandarPapas && <IconCheck />}
+                      </div>
+                      <span className="adicion-name">Papas Grandes</span>
+                    </div>
+                    <span className="adicion-price">+{fmt(2000)}</span>
+                  </div>
+                </div>
+              )}
+
               <div className="modal-section">
                 <div className="modal-section-title">
                   💬 Comentarios <span className="optional">(opcional)</span>
@@ -684,16 +794,6 @@ export default function ComoSeriaMenu() {
                 />
               </div>
 
-              {/* Info Burger Master */}
-              {modalItem.isBurgerMaster && (
-                <div className="bm-tulio-notice">
-                  <span className="bm-tulio-icon">👑</span>
-                  <div>
-                    <strong>¡Califica esta hamburguesa!</strong><br />
-                    Descarga <em>Tulio Recomienda</em> y deja tu voto en la sección Master.
-                  </div>
-                </div>
-              )}
             </div>
 
             <div className="modal-footer">
@@ -702,8 +802,12 @@ export default function ComoSeriaMenu() {
                 <span className="modal-qty-num">{modalQty}</span>
                 <button className="modal-qty-btn" onClick={() => setModalQty(modalQty + 1)}><IconPlus /></button>
               </div>
-              <button className="modal-add-btn" id="btn-add-to-cart" onClick={addToCart}>
-                Agregar {fmt((modalItem.price + selectedAdiciones.reduce((s, a) => s + a.price, 0)) * modalQty)}
+              <button
+                className="modal-add-btn"
+                id="btn-add-to-cart"
+                onClick={editingCartId ? saveCartChanges : addToCart}
+              >
+                {editingCartId ? "Guardar cambios" : "Agregar"} {fmt((modalItem.price + selectedAdiciones.reduce((s, a) => s + a.price, 0) + (agrandarPapas && modalItem.category === "combos" ? 2000 : 0)) * modalQty)}
               </button>
             </div>
           </div>
@@ -760,8 +864,14 @@ export default function ComoSeriaMenu() {
                           {item.removedIngredients.length > 0 && (
                             <div className="removed-ing">❌ Sin: {item.removedIngredients.join(", ")}</div>
                           )}
+                          {item.bebida && (
+                            <div className="added-ing">🥤 Bebida: {item.bebida.name}</div>
+                          )}
                           {item.adiciones.length > 0 && (
                             <div className="added-ing">➕ {item.adiciones.map((a) => a.name).join(", ")}</div>
+                          )}
+                          {item.agrandarPapas && (
+                            <div className="added-ing">🍟 Papas Grandes (+$2.000)</div>
                           )}
                           {item.comment && <div>💬 {item.comment}</div>}
                         </div>
@@ -769,6 +879,7 @@ export default function ComoSeriaMenu() {
                       <div className="cart-item-right">
                         <span className="cart-item-price">{fmt(item.totalPrice * item.qty)}</span>
                         <div className="cart-item-actions">
+                          <button className="cart-item-action" onClick={() => openModalForEdit(item)}><IconEdit /></button>
                           <button className="cart-item-action" onClick={() => updateCartQty(item.cartId, -1)}><IconMinus /></button>
                           <button className="cart-item-action" onClick={() => updateCartQty(item.cartId, 1)}><IconPlus /></button>
                           <button className="cart-item-action delete" onClick={() => removeFromCart(item.cartId)}><IconTrash /></button>
@@ -776,12 +887,81 @@ export default function ComoSeriaMenu() {
                       </div>
                     </div>
                   ))}
+                  
+                  {/* DELIVERY TYPE SECTION */}
+                  <div className="delivery-section">
+                    <div className="delivery-title">📍 Tipo de Entrega</div>
+                    <div className="delivery-options">
+                      <button
+                        className={`delivery-btn ${deliveryType === "recoger" ? "active" : ""}`}
+                        onClick={() => {
+                          setDeliveryType("recoger");
+                          setDeliveryLocation(null);
+                          setDeliveryAddress("");
+                        }}
+                      >
+                        Para Recoger
+                      </button>
+                      <button
+                        className={`delivery-btn ${deliveryType === "domicilio" ? "active" : ""}`}
+                        onClick={() => setDeliveryType("domicilio")}
+                      >
+                        Domicilio
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* DELIVERY LOCATION SECTION */}
+                  {deliveryType === "domicilio" && (
+                    <div className="delivery-location-section">
+                      <div className="delivery-subtitle">Selecciona una ubicación:</div>
+                      {DELIVERY_LOCATIONS.map((loc) => (
+                        <div
+                          key={loc.id}
+                          className={`delivery-location-btn ${deliveryLocation?.id === loc.id ? "selected" : ""}`}
+                          onClick={() => setDeliveryLocation(loc)}
+                        >
+                          <div className="location-name">{loc.name}</div>
+                          <div className="location-price">+{fmt(loc.price)}</div>
+                        </div>
+                      ))}
+                      
+                      {/* ADDRESS INPUT */}
+                      <div className="address-input-wrap">
+                        <label className="address-label">Dirección de entrega:</label>
+                        <input
+                          type="text"
+                          className="address-input"
+                          placeholder="Ingresa la dirección completa..."
+                          value={deliveryAddress}
+                          onChange={(e) => setDeliveryAddress(e.target.value)}
+                          maxLength={200}
+                        />
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="payment-section">
+                    <div className="delivery-title">💳 Método de Pago</div>
+                    <div className="payment-options">
+                      {PAYMENT_METHODS.map((method) => (
+                        <button
+                          key={method.id}
+                          className={`delivery-btn ${paymentMethod === method.id ? "active" : ""}`}
+                          onClick={() => setPaymentMethod(method.id)}
+                        >
+                          {method.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
                   <div className="cart-total-row">
                     <span className="cart-total-label">TOTAL</span>
-                    <span className="cart-total-price">{fmt(cartTotal)}</span>
+                    <span className="cart-total-price">{fmt(cartTotal + (deliveryLocation?.price || 0))}</span>
                   </div>
                   <button
-                    className={`cart-wa-btn ${!customerName.trim() ? "disabled" : ""}`}
+                    className={`cart-wa-btn ${!customerName.trim() || (deliveryType === "domicilio" && (!deliveryLocation || !deliveryAddress.trim())) || !paymentMethod ? "disabled" : ""}`}
                     id="btn-send-whatsapp"
                     onClick={sendToWhatsApp}
                   >
@@ -789,6 +969,12 @@ export default function ComoSeriaMenu() {
                   </button>
                   {!customerName.trim() && (
                     <p className="wa-btn-hint">Escribe tu nombre arriba para enviar el pedido</p>
+                  )}
+                  {deliveryType === "domicilio" && (!deliveryLocation || !deliveryAddress.trim()) && (
+                    <p className="wa-btn-hint">Selecciona ubicación e ingresa dirección para domicilio</p>
+                  )}
+                  {!paymentMethod && (
+                    <p className="wa-btn-hint">Selecciona un método de pago antes de enviar el pedido</p>
                   )}
                 </>
               )}
