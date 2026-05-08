@@ -54,8 +54,8 @@ const MENU = {
     { id: "h6", name: "La Callejera", price: 28900, desc: "Carne angus 180gr, pan brioche, tocineta, queso doble crema, cebolla, tomate, ripio de papa", ingredients: ["Carne angus", "Pan brioche", "Tocineta", "Queso doble crema", "Cebolla", "Tomate", "Ripio de papa"] },
   ],
   tenders: [
-    { id: "t1", name: "Tenders x3", price: 23900, desc: "3 tenders crujientes con papas", ingredients: [] },
-    { id: "t2", name: "Tenders x6", price: 40900, desc: "6 tenders crujientes con papas", ingredients: [] },
+    { id: "t1", name: "Tenders x3", price: 23900, desc: "3 tenders crujientes con papas", ingredients: [], allowCustomization: false },
+    { id: "t2", name: "Tenders x6", price: 40900, desc: "6 tenders crujientes con papas", ingredients: [], allowCustomization: false },
   ],
   combos: [
     { id: "c1", name: "Combo La Clásica",     price: 35500, desc: "La Clásica + Papas fritas + Bebida a tu gusto",     burger: "La Clásica",     ingredients: ["Carne angus", "Lechuga", "Tomate", "Cebolla", "Queso", "Salsa de la casa"] },
