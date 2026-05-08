@@ -94,6 +94,12 @@ const MENU = {
   ],
 };
 
+const SIDES = [
+  { id: "s1", name: "Papas", price: 0 },
+  { id: "s2", name: "Papas Lemon Pepper", price: 0 },
+  { id: "s3", name: "Aros de Cebolla", price: 1000 },
+];
+
 const CATEGORY_META = {
   hamburguesas: { icon: "🍔", label: "Hamburguesas" },
   tenders: { icon: "🍗", label: "Chicken Tenders" },
@@ -211,6 +217,7 @@ export default function ComoSeriaMenu() {
   const [removedIngredients, setRemovedIngredients] = useState([]);
   const [selectedAdiciones, setSelectedAdiciones] = useState([]);
   const [selectedBebida, setSelectedBebida] = useState(null);
+  const [selectedSide, setSelectedSide] = useState(null);
   const [comment, setComment] = useState("");
   const [agrandarPapas, setAgrandarPapas] = useState(false);
   const [editingCartId, setEditingCartId] = useState(null);
@@ -234,6 +241,7 @@ export default function ComoSeriaMenu() {
     setRemovedIngredients([]);
     setSelectedAdiciones([]);
     setSelectedBebida(category === "combos" ? MENU.bebidas[0] : null);
+    setSelectedSide(category === "combos" ? SIDES.find(s => s.id === "s1") : null);
     setComment("");
     setAgrandarPapas(false);
   };
@@ -246,6 +254,7 @@ export default function ComoSeriaMenu() {
     setRemovedIngredients(cartItem.removedIngredients || []);
     setSelectedAdiciones(cartItem.adiciones || []);
     setSelectedBebida(cartItem.bebida || (cartItem.category === "combos" ? MENU.bebidas[0] : null));
+    setSelectedSide(cartItem.side || (cartItem.category === "combos" ? SIDES.find(s => s.id === "s1") : null));
     setComment(cartItem.comment || "");
     setAgrandarPapas(cartItem.agrandarPapas || false);
     setShowCart(false);
@@ -254,6 +263,7 @@ export default function ComoSeriaMenu() {
   const closeModal = () => {
     setModalItem(null);
     setEditingCartId(null);
+    setSelectedSide(null);
   };
 
   const toggleIngredient = (ing) => {
@@ -274,13 +284,15 @@ export default function ComoSeriaMenu() {
     if (!modalItem || editingCartId) return;
     const adicionesTotal = selectedAdiciones.reduce((s, a) => s + a.price, 0);
     const upsize = agrandarPapas ? 2000 : 0;
-    const unitPrice = modalItem.price + adicionesTotal + upsize;
+    const sidePrice = selectedSide?.price || 0;
+    const unitPrice = modalItem.price + adicionesTotal + upsize + sidePrice;
     const cartItem = {
       cartId: Date.now() + Math.random(),
       id: modalItem.id,
       name: modalItem.name,
       basePrice: modalItem.price,
       bebida: selectedBebida,
+      side: selectedSide,
       adiciones: [...selectedAdiciones],
       removedIngredients: [...removedIngredients],
       comment,
@@ -298,7 +310,8 @@ export default function ComoSeriaMenu() {
     if (!modalItem || !editingCartId) return;
     const adicionesTotal = selectedAdiciones.reduce((s, a) => s + a.price, 0);
     const upsize = agrandarPapas ? 2000 : 0;
-    const unitPrice = modalItem.price + adicionesTotal + upsize;
+    const sidePrice = selectedSide?.price || 0;
+    const unitPrice = modalItem.price + adicionesTotal + upsize + sidePrice;
     setCart((prev) => prev.map((item) => {
       if (item.cartId !== editingCartId) return item;
       return {
@@ -307,6 +320,7 @@ export default function ComoSeriaMenu() {
         name: modalItem.name,
         basePrice: modalItem.price,
         bebida: selectedBebida,
+        side: selectedSide,
         adiciones: [...selectedAdiciones],
         removedIngredients: [...removedIngredients],
         comment,
@@ -361,6 +375,9 @@ export default function ComoSeriaMenu() {
       }
       if (item.bebida) {
         msg += `   🥤 Bebida: ${item.bebida.name}\n`;
+      }
+      if (item.side) {
+        msg += `   🍟 ${item.side.name}${item.side.price > 0 ? ` (+$${fmt(item.side.price)})` : ''}\n`;
       }
       if (item.adiciones.length > 0) {
         msg += `   ➕ Con: ${item.adiciones.map((a) => a.name).join(", ")}\n`;
@@ -763,6 +780,30 @@ export default function ComoSeriaMenu() {
                 </div>
               )}
 
+              {/* Selección de acompañamiento para combos */}
+              {modalItem.category === "combos" && (
+                <div className="modal-section">
+                  <div className="modal-section-title">
+                    🍟 Acompañamiento incluido <span className="optional">(elige uno)</span>
+                  </div>
+                  {SIDES.map((side) => (
+                    <div
+                      key={side.id}
+                      className={`adicion-row ${selectedSide?.id === side.id ? "selected" : ""}`}
+                      onClick={() => setSelectedSide(side)}
+                    >
+                      <div className="adicion-left">
+                        <div className={`adicion-check ${selectedSide?.id === side.id ? "checked" : ""}`}>
+                          {selectedSide?.id === side.id && <IconCheck />}
+                        </div>
+                        <span className="adicion-name">{side.name}</span>
+                      </div>
+                      <span className="adicion-price">{side.price > 0 ? `+${fmt(side.price)}` : "Incluido"}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* Papas Grandes - Solo para combos */}
               {modalItem.category === "combos" && (
                 <div className="modal-section">
@@ -866,6 +907,9 @@ export default function ComoSeriaMenu() {
                           )}
                           {item.bebida && (
                             <div className="added-ing">🥤 Bebida: {item.bebida.name}</div>
+                          )}
+                          {item.side && (
+                            <div className="added-ing">🍟 {item.side.name}{item.side.price > 0 ? ` (+$${fmt(item.side.price)})` : ''}</div>
                           )}
                           {item.adiciones.length > 0 && (
                             <div className="added-ing">➕ {item.adiciones.map((a) => a.name).join(", ")}</div>
