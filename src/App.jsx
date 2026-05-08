@@ -848,7 +848,7 @@ export default function ComoSeriaMenu() {
                 id="btn-add-to-cart"
                 onClick={editingCartId ? saveCartChanges : addToCart}
               >
-                {editingCartId ? "Guardar cambios" : "Agregar"} {fmt((modalItem.price + selectedAdiciones.reduce((s, a) => s + a.price, 0) + (agrandarPapas && modalItem.category === "combos" ? 2000 : 0)) * modalQty)}
+                {editingCartId ? "Guardar cambios" : "Agregar"} {fmt((modalItem.price + selectedAdiciones.reduce((s, a) => s + a.price, 0) + (selectedSide?.price || 0) + (agrandarPapas && modalItem.category === "combos" ? 2000 : 0)) * modalQty)}
               </button>
             </div>
           </div>
