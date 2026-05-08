@@ -74,7 +74,7 @@ const MENU = {
     { id: "a6", name: "Pulled Pork", price: 6000 },
     { id: "a7", name: "Carne Angus", price: 8000 },
     { id: "a8", name: "Papas", price: 6500 },
-    { id: "a9", name: "Aros de cebolla (cambio)", price: 1000 },
+    { id: "a10", name: "Papas Lemon Pepper", price: 6500 },
   ],
   bebidas: [
     { id: "b1",  name: "Coca Cola",           price: 6000 },
