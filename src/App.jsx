@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import logoImg from "/logo.png";
+import logoImg from "/logo.svg";
 import AdminDashboard from "./AdminDashboard";
 
 // ─── ROUTING ─────────────────────────────────────────────────────────────────
