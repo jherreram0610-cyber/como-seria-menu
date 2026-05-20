@@ -393,7 +393,13 @@ export default function ComoSeriaMenu() {
     msg += "━━━━━━━━━━━━━━━\n";
     const deliveryFee = deliveryLocation?.price || 0;
     const totalWithDelivery = cartTotal + deliveryFee;
-    msg += `*TOTAL: ${fmt(totalWithDelivery)}*\n\n`;
+    if (deliveryType === "domicilio" && deliveryFee > 0) {
+      msg += `*Subtotal: ${fmt(cartTotal)}*\n`;
+      msg += `🛵 Domicilio: ${fmt(deliveryFee)}\n`;
+      msg += `*TOTAL: ${fmt(totalWithDelivery)}*\n\n`;
+    } else {
+      msg += `*TOTAL: ${fmt(totalWithDelivery)}*\n\n`;
+    }
     if (paymentMethod) {
       const paymentLabel = PAYMENT_METHODS.find((m) => m.id === paymentMethod)?.label || paymentMethod;
       msg += `💳 Método de pago: ${paymentLabel}\n\n`;
@@ -1000,10 +1006,27 @@ export default function ComoSeriaMenu() {
                     </div>
                   </div>
 
-                  <div className="cart-total-row">
-                    <span className="cart-total-label">TOTAL</span>
-                    <span className="cart-total-price">{fmt(cartTotal + (deliveryLocation?.price || 0))}</span>
-                  </div>
+                  {deliveryType === "domicilio" && deliveryLocation ? (
+                    <div className="cart-totals-breakdown">
+                      <div className="cart-subtotal-row">
+                        <span className="cart-subtotal-label">Subtotal</span>
+                        <span className="cart-subtotal-price">{fmt(cartTotal)}</span>
+                      </div>
+                      <div className="cart-delivery-row">
+                        <span className="cart-delivery-label">🛵 Domicilio ({deliveryLocation.name})</span>
+                        <span className="cart-delivery-price">{fmt(deliveryLocation.price)}</span>
+                      </div>
+                      <div className="cart-total-row">
+                        <span className="cart-total-label">TOTAL</span>
+                        <span className="cart-total-price">{fmt(cartTotal + deliveryLocation.price)}</span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="cart-total-row">
+                      <span className="cart-total-label">TOTAL</span>
+                      <span className="cart-total-price">{fmt(cartTotal)}</span>
+                    </div>
+                  )}
                   <button
                     className={`cart-wa-btn ${!customerName.trim() || (deliveryType === "domicilio" && (!deliveryLocation || !deliveryAddress.trim())) || !paymentMethod ? "disabled" : ""}`}
                     id="btn-send-whatsapp"

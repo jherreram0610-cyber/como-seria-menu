@@ -376,6 +376,31 @@ body {
 }
 .cart-total-label { font-family: 'Bebas Neue', cursive; font-size: 22px; letter-spacing: 1px; }
 .cart-total-price { font-family: 'Bebas Neue', cursive; font-size: 28px; color: var(--green); }
+
+/* ─── CART TOTALS BREAKDOWN (domicilio) ─── */
+.cart-totals-breakdown {
+  margin-top: 8px;
+}
+.cart-subtotal-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 10px 0 6px; border-top: 1px dashed var(--gray-300);
+}
+.cart-subtotal-label {
+  font-size: 14px; font-weight: 600; color: var(--gray-700);
+}
+.cart-subtotal-price {
+  font-family: 'Bebas Neue', cursive; font-size: 20px; color: var(--black);
+}
+.cart-delivery-row {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 6px 0 10px;
+}
+.cart-delivery-label {
+  font-size: 13px; font-weight: 500; color: var(--gray-500);
+}
+.cart-delivery-price {
+  font-family: 'Bebas Neue', cursive; font-size: 18px; color: var(--gray-700);
+}
 .cart-wa-btn {
   width: 100%; background: #25D366; color: var(--white); border: none;
   padding: 16px; border-radius: 50px; font-size: 16px; font-weight: 700;
