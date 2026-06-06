@@ -492,7 +492,7 @@ export default function ComoSeriaMenu() {
               <IconMapPin /> Country Mall, Jamundí
             </div>
             <div className="header-info-item">
-              <IconClock /> Horario: mar-jue 5:30pm - 10:00pm | vie-dom y festivos 5:30pm - 10:30pm
+              <IconClock /> Horario: mar-jue 5:30pm - 9:30pm | vie-dom y festivos 5:30pm - 10:00pm
             </div>
           </div>
         </header>
@@ -670,7 +670,9 @@ export default function ComoSeriaMenu() {
           <p className="footer-powered">Instagram: <a href="https://www.instagram.com/somoscomoseria" target="_blank" rel="noopener">@somoscomoseria</a></p>
           <div className="footer-corxium">
             <span className="footer-corxium-label">Desarrollado por</span>
-            <img src="/corxium.svg" alt="Corxium SAS" className="footer-corxium-logo" />
+            <a href="https://www.corxium.com/" target="_blank" rel="noopener noreferrer">
+              <img src="/corxium.svg" alt="Corxium SAS" className="footer-corxium-logo" />
+            </a>
           </div>
         </footer>
 
