@@ -92,6 +92,9 @@ const MENU = {
     { id: "b12", name: "Agua Brisa Limón",     price: 6000 },
     { id: "b13", name: "Agua",                 price: 5000 },
     { id: "b14", name: "Agua con Gas",         price: 5000 },
+    { id: "b15", name: "Soda Tropical",        price: 10000, isNew: true, comboExtra: 5000 },
+    { id: "b16", name: "Soda Lulo",            price: 10000, isNew: true, comboExtra: 5000 },
+    { id: "b17", name: "Soda Maracuyá",        price: 10000, isNew: true, comboExtra: 5000 },
   ],
 };
 
@@ -286,7 +289,8 @@ export default function ComoSeriaMenu() {
     const adicionesTotal = selectedAdiciones.reduce((s, a) => s + a.price, 0);
     const upsize = agrandarPapas ? 2000 : 0;
     const sidePrice = selectedSide?.price || 0;
-    const unitPrice = modalItem.price + adicionesTotal + upsize + sidePrice;
+    const bebidaExtra = modalItem.category === "combos" ? (selectedBebida?.comboExtra || 0) : 0;
+    const unitPrice = modalItem.price + adicionesTotal + upsize + sidePrice + bebidaExtra;
     const cartItem = {
       cartId: Date.now() + Math.random(),
       id: modalItem.id,
@@ -312,7 +316,8 @@ export default function ComoSeriaMenu() {
     const adicionesTotal = selectedAdiciones.reduce((s, a) => s + a.price, 0);
     const upsize = agrandarPapas ? 2000 : 0;
     const sidePrice = selectedSide?.price || 0;
-    const unitPrice = modalItem.price + adicionesTotal + upsize + sidePrice;
+    const bebidaExtra = modalItem.category === "combos" ? (selectedBebida?.comboExtra || 0) : 0;
+    const unitPrice = modalItem.price + adicionesTotal + upsize + sidePrice + bebidaExtra;
     setCart((prev) => prev.map((item) => {
       if (item.cartId !== editingCartId) return item;
       return {
@@ -375,7 +380,7 @@ export default function ComoSeriaMenu() {
         msg += `   ❌ Sin: ${item.removedIngredients.join(", ")}\n`;
       }
       if (item.bebida) {
-        msg += `   🥤 Bebida: ${item.bebida.name}\n`;
+        msg += `   🥤 Bebida: ${item.bebida.name}${item.category === "combos" && item.bebida.comboExtra ? ` (+${fmt(item.bebida.comboExtra)})` : ''}\n`;
       }
       if (item.side) {
         msg += `   🍟 ${item.side.name}${item.side.price > 0 ? ` (+$${fmt(item.side.price)})` : ''}\n`;
@@ -621,6 +626,9 @@ export default function ComoSeriaMenu() {
                         {item.popular && (
                           <span className="popular-tag"><IconStar /> Popular</span>
                         )}
+                        {item.isNew && (
+                          <span className="new-tag"><IconStar /> Nuevo</span>
+                        )}
                         {catKey === "combos" && (
                           <span className="combo-badge">🔥 Combo</span>
                         )}
@@ -781,9 +789,12 @@ export default function ComoSeriaMenu() {
                         <div className={`adicion-check ${selectedBebida?.id === bebida.id ? "checked" : ""}`}>
                           {selectedBebida?.id === bebida.id && <IconCheck />}
                         </div>
-                        <span className="adicion-name">{bebida.name}</span>
+                        <span className="adicion-name">
+                          {bebida.name}
+                          {bebida.isNew && <span className="new-tag"><IconStar /> Nuevo</span>}
+                        </span>
                       </div>
-                      <span className="adicion-price">Incluido</span>
+                      <span className="adicion-price">{bebida.comboExtra ? `+${fmt(bebida.comboExtra)}` : "Incluido"}</span>
                     </div>
                   ))}
                 </div>
@@ -857,7 +868,7 @@ export default function ComoSeriaMenu() {
                 id="btn-add-to-cart"
                 onClick={editingCartId ? saveCartChanges : addToCart}
               >
-                {editingCartId ? "Guardar cambios" : "Agregar"} {fmt((modalItem.price + selectedAdiciones.reduce((s, a) => s + a.price, 0) + (selectedSide?.price || 0) + (agrandarPapas && modalItem.category === "combos" ? 2000 : 0)) * modalQty)}
+                {editingCartId ? "Guardar cambios" : "Agregar"} {fmt((modalItem.price + selectedAdiciones.reduce((s, a) => s + a.price, 0) + (selectedSide?.price || 0) + (agrandarPapas && modalItem.category === "combos" ? 2000 : 0) + (modalItem.category === "combos" ? (selectedBebida?.comboExtra || 0) : 0)) * modalQty)}
               </button>
             </div>
           </div>
@@ -915,7 +926,10 @@ export default function ComoSeriaMenu() {
                             <div className="removed-ing">❌ Sin: {item.removedIngredients.join(", ")}</div>
                           )}
                           {item.bebida && (
-                            <div className="added-ing">🥤 Bebida: {item.bebida.name}</div>
+                            <div className="added-ing">
+                              🥤 Bebida: {item.bebida.name}
+                              {item.category === "combos" && item.bebida.comboExtra ? ` (+${fmt(item.bebida.comboExtra)})` : ''}
+                            </div>
                           )}
                           {item.side && (
                             <div className="added-ing">🍟 {item.side.name}{item.side.price > 0 ? ` (+$${fmt(item.side.price)})` : ''}</div>
