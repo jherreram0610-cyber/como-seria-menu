@@ -58,6 +58,7 @@ const MENU = {
     { id: "t2", name: "Tenders x6", price: 40900, desc: "6 tenders crujientes con papas", ingredients: [], allowCustomization: false },
   ],
   combos: [
+    { id: "c7", name: "Combo Cali Vibes",      price: 40900, desc: "Cali Vibes + Papas fritas + Bebida a tu gusto",     burger: "Cali Vibes",     ingredients: ["Pan", "Carne Angus", "Lechuga", "Maduro caramelizado", "Mermelada de lulo", "Salsa de la casa"] },
     { id: "c1", name: "Combo La Clásica",     price: 35500, desc: "La Clásica + Papas fritas + Bebida a tu gusto",     burger: "La Clásica",     ingredients: ["Carne angus", "Lechuga", "Tomate", "Cebolla", "Queso", "Salsa de la casa"] },
     { id: "c2", name: "Combo Philly Pork",    price: 42900, desc: "Philly Pork + Papas fritas + Bebida a tu gusto",    burger: "Philly Pork",    ingredients: ["Carne angus", "Pan brioche", "Queso americano", "Pulled pork", "Cebolla crispy", "Queso Philadelphia"] },
     { id: "c3", name: "Combo Chicken Crunch", price: 36900, desc: "Chicken Crunch + Papas fritas + Bebida a tu gusto", burger: "Chicken Crunch", ingredients: ["Pan brioche", "Tenders", "Queso americano", "Tocineta", "Tomate", "Lechuga"] },
