@@ -1,0 +1,50 @@
+-- Como Seria — esquema de base de datos (Postgres / Supabase)
+-- Se ejecuta una sola vez (o cada vez que se corre scripts/seed-menu.mjs, es idempotente).
+
+create table if not exists menu_items (
+  id                   text primary key,
+  category             text not null check (category in ('hamburguesas', 'tenders', 'combos', 'adiciones', 'bebidas')),
+  name                 text not null,
+  price                integer not null,
+  description          text,
+  ingredients          jsonb not null default '[]',
+  burger               text,
+  combo_extra          integer,
+  allow_customization  boolean not null default true,
+  is_new               boolean not null default false,
+  popular              boolean not null default false,
+  special              boolean not null default false,
+  is_burger_master     boolean not null default false,
+  burger_img           text,
+  sort_order           integer not null default 0,
+  is_active            boolean not null default true,
+  created_at           timestamptz not null default now(),
+  updated_at           timestamptz not null default now()
+);
+
+create table if not exists orders (
+  id                uuid primary key default gen_random_uuid(),
+  customer_name     text not null,
+  items             jsonb not null,
+  subtotal          integer not null,
+  delivery_fee      integer not null default 0,
+  total             integer not null,
+  delivery_type     text not null,
+  delivery_location text,
+  delivery_address  text,
+  payment_method    text,
+  created_at        timestamptz not null default now()
+);
+
+create table if not exists delivery_locations (
+  id          text primary key,
+  name        text not null,
+  price       integer not null,
+  sort_order  integer not null default 0,
+  is_active   boolean not null default true,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+
+create index if not exists orders_created_at_idx on orders (created_at desc);
+create index if not exists menu_items_category_idx on menu_items (category, sort_order);

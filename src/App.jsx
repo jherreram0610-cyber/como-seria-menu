@@ -8,95 +8,20 @@ if (window.location.pathname === "/admin") {
 }
 
 // ─── ORDER TRACKING ──────────────────────────────────────────────────────────
-const ORDER_KEY = "como_seria_orders";
-
-function saveOrder({ customerName, cart, cartTotal }) {
-  try {
-    const now = new Date();
-    const record = {
-      id: now.getTime(),
-      date: now.toISOString().slice(0, 10),
-      time: now.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
-      customerName: customerName.trim(),
-      items: cart.reduce((s, i) => s + i.qty, 0),
-      total: cartTotal,
-      products: cart.map((i) => i.name),
-    };
-    const existing = JSON.parse(localStorage.getItem(ORDER_KEY) || "[]");
-    existing.push(record);
-    localStorage.setItem(ORDER_KEY, JSON.stringify(existing));
-  } catch (e) {
-    console.warn("No se pudo guardar el pedido:", e);
-  }
+function saveOrder(order) {
+  fetch("/api/orders", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(order),
+  }).catch((e) => console.warn("No se pudo guardar el pedido:", e));
 }
 
 // ─── DATA ────────────────────────────────────────────────────────────────────
 const WHATSAPP_NUMBER = "573026233522";
 
-const MENU = {
-  hamburguesas: [
-    {
-      id: "bm2026",
-      name: "Cali Vibes",
-      price: 30900,
-      desc: "Carne Angus 180gr, Mermelada de lulo, Maduro caramelizado, Lechuga y Salsa de la casa",
-      ingredients: ["Pan", "Carne Angus", "Lechuga", "Maduro caramelizado", "Mermelada de lulo", "Salsa de la casa"],
-      allowCustomization: true,
-      isBurgerMaster: true,
-      burgerImg: null,
-      special: true,
-    },
-    { id: "h1", name: "La Clásica", price: 25500, desc: "Carne angus 180gr, lechuga, tomate, cebolla, queso y salsa de la casa", ingredients: ["Carne angus", "Lechuga", "Tomate", "Cebolla", "Queso", "Salsa de la casa"], popular: true },
-    { id: "h2", name: "Cheese Bacon", price: 27900, desc: "Doble carne angus 90gr, tocineta, doble queso y salsa de la casa", ingredients: ["Doble carne angus", "Tocineta", "Doble queso", "Salsa de la casa"] },
-    { id: "h3", name: "Philly Pork", price: 32900, desc: "Carne angus 180gr, pan brioche, queso americano, pulled pork, cebolla crispy, queso Philadelphia", ingredients: ["Carne angus", "Pan brioche", "Queso americano", "Pulled pork", "Cebolla crispy", "Queso Philadelphia"], popular: true },
-    { id: "h4", name: "La Crunchy", price: 28900, desc: "Carne angus 180gr, queso crema, tocineta, cebolla crispy, queso y salsa BBQ", ingredients: ["Carne angus", "Queso crema", "Tocineta", "Cebolla crispy", "Queso", "Salsa BBQ"] },
-    { id: "h5", name: "Chicken Crunch", price: 26900, desc: "Pan brioche, tenders, queso americano, tocineta, tomate y lechuga", ingredients: ["Pan brioche", "Tenders", "Queso americano", "Tocineta", "Tomate", "Lechuga"] },
-    { id: "h6", name: "La Callejera", price: 28900, desc: "Carne angus 180gr, pan brioche, tocineta, queso doble crema, cebolla, tomate, ripio de papa", ingredients: ["Carne angus", "Pan brioche", "Tocineta", "Queso doble crema", "Cebolla", "Tomate", "Ripio de papa"] },
-  ],
-  tenders: [
-    { id: "t1", name: "Tenders x3", price: 23900, desc: "3 tenders crujientes con papas", ingredients: [], allowCustomization: false },
-    { id: "t2", name: "Tenders x6", price: 40900, desc: "6 tenders crujientes con papas", ingredients: [], allowCustomization: false },
-  ],
-  combos: [
-    { id: "c7", name: "Combo Cali Vibes",      price: 40900, desc: "Cali Vibes + Papas fritas + Bebida a tu gusto",     burger: "Cali Vibes",     ingredients: ["Pan", "Carne Angus", "Lechuga", "Maduro caramelizado", "Mermelada de lulo", "Salsa de la casa"] },
-    { id: "c1", name: "Combo La Clásica",     price: 35500, desc: "La Clásica + Papas fritas + Bebida a tu gusto",     burger: "La Clásica",     ingredients: ["Carne angus", "Lechuga", "Tomate", "Cebolla", "Queso", "Salsa de la casa"] },
-    { id: "c2", name: "Combo Philly Pork",    price: 42900, desc: "Philly Pork + Papas fritas + Bebida a tu gusto",    burger: "Philly Pork",    ingredients: ["Carne angus", "Pan brioche", "Queso americano", "Pulled pork", "Cebolla crispy", "Queso Philadelphia"] },
-    { id: "c3", name: "Combo Chicken Crunch", price: 36900, desc: "Chicken Crunch + Papas fritas + Bebida a tu gusto", burger: "Chicken Crunch", ingredients: ["Pan brioche", "Tenders", "Queso americano", "Tocineta", "Tomate", "Lechuga"] },
-    { id: "c4", name: "Combo Cheese Bacon",   price: 37900, desc: "Cheese Bacon + Papas fritas + Bebida a tu gusto",   burger: "Cheese Bacon",   ingredients: ["Doble carne angus", "Tocineta", "Doble queso", "Salsa de la casa"] },
-    { id: "c5", name: "Combo La Crunchy",     price: 38900, desc: "La Crunchy + Papas fritas + Bebida a tu gusto",     burger: "La Crunchy",     ingredients: ["Carne angus", "Queso crema", "Tocineta", "Cebolla crispy", "Queso", "Salsa BBQ"] },
-    { id: "c6", name: "Combo La Callejera",   price: 38900, desc: "La Callejera + Papas fritas + Bebida a tu gusto",   burger: "La Callejera",   ingredients: ["Carne angus", "Pan brioche", "Tocineta", "Queso doble crema", "Cebolla", "Tomate", "Ripio de papa"] },
-  ],
-  adiciones: [
-    { id: "a1", name: "Tocineta", price: 2500 },
-    { id: "a2", name: "Queso", price: 2500 },
-    { id: "a3", name: "Cebolla Crispy", price: 2000 },
-    { id: "a4", name: "Queso Philadelphia", price: 3000 },
-    { id: "a5", name: "Pepinillos", price: 2000 },
-    { id: "a6", name: "Pulled Pork", price: 6000 },
-    { id: "a7", name: "Carne Angus", price: 8000 },
-    { id: "a8", name: "Papas", price: 6500 },
-    { id: "a10", name: "Papas Lemon Pepper", price: 6500 },
-  ],
-  bebidas: [
-    { id: "b1",  name: "Coca Cola",           price: 6000 },
-    { id: "b2",  name: "Coca Cola Zero",       price: 6000 },
-    { id: "b3",  name: "Sprite",               price: 6000 },
-    { id: "b4",  name: "Quatro",               price: 6000 },
-    { id: "b5",  name: "Ginger",               price: 6000 },
-    { id: "b6",  name: "Kola Román",           price: 6000 },
-    { id: "b7",  name: "Fuze Tea Limón",       price: 6500 },
-    { id: "b8",  name: "Fuze Tea Durazno",     price: 6500 },
-    { id: "b9",  name: "Fuze Tea Manzana",     price: 6500 },
-    { id: "b10", name: "Agua Brisa Manzana",   price: 6000 },
-    { id: "b11", name: "Agua Brisa Maracuyá",  price: 6000 },
-    { id: "b12", name: "Agua Brisa Limón",     price: 6000 },
-    { id: "b13", name: "Agua",                 price: 5000 },
-    { id: "b14", name: "Agua con Gas",         price: 5000 },
-    { id: "b15", name: "Soda Tropical",        price: 10000, isNew: true, comboExtra: 5000 },
-    { id: "b16", name: "Soda Lulo",            price: 10000, isNew: true, comboExtra: 5000 },
-    { id: "b17", name: "Soda Maracuyá",        price: 10000, isNew: true, comboExtra: 5000 },
-  ],
-};
+// El menú real se carga desde /api/menu (base de datos). El contenido inicial
+// para poblar esa base de datos vive en scripts/seed-menu.mjs.
+const EMPTY_MENU = { hamburguesas: [], tenders: [], combos: [], adiciones: [], bebidas: [] };
 
 const SIDES = [
   { id: "s1", name: "Papas", price: 0 },
@@ -111,13 +36,6 @@ const CATEGORY_META = {
   adiciones: { icon: "➕", label: "Adiciones" },
   bebidas: { icon: "🥤", label: "Bebidas" },
 };
-
-const DELIVERY_LOCATIONS = [
-  { id: "cc", name: "Ciudad Country", price: 5000 },
-  { id: "cs", name: "5 Soles", price: 7000 },
-  { id: "ec", name: "El Castillo", price: 8000 },
-  { id: "pg", name: "Pangola", price: 8000 },
-];
 
 const PAYMENT_METHODS = [
   { id: "qr-bold", label: "QR de Bold" },
@@ -161,6 +79,33 @@ export default function ComoSeriaMenu() {
   const navRef = useRef(null);
   const nameInputRef = useRef(null);
 
+  const [MENU, setMENU] = useState(EMPTY_MENU);
+  const [menuLoading, setMenuLoading] = useState(true);
+  const [menuError, setMenuError] = useState(false);
+  const [DELIVERY_LOCATIONS, setDeliveryLocations] = useState([]);
+
+  useEffect(() => {
+    Promise.all([
+      fetch("/api/menu").then((r) => {
+        if (!r.ok) throw new Error("No se pudo cargar el menú");
+        return r.json();
+      }),
+      fetch("/api/delivery-locations").then((r) => {
+        if (!r.ok) throw new Error("No se pudo cargar las zonas de domicilio");
+        return r.json();
+      }),
+    ])
+      .then(([menuData, deliveryData]) => {
+        setMENU(menuData);
+        setDeliveryLocations(deliveryData.locations || []);
+        setMenuLoading(false);
+      })
+      .catch(() => {
+        setMenuError(true);
+        setMenuLoading(false);
+      });
+  }, []);
+
   // Evaluar qué flechas mostrar según la posición del scroll
   const checkScrollArrows = useCallback(() => {
     const nav = navRef.current;
@@ -181,7 +126,7 @@ export default function ComoSeriaMenu() {
       window.removeEventListener("resize", checkScrollArrows);
       nav.removeEventListener("scroll", checkScrollArrows);
     };
-  }, [checkScrollArrows]);
+  }, [checkScrollArrows, menuLoading]);
 
   // Drag-to-scroll con mouse en desktop
   useEffect(() => {
@@ -214,7 +159,7 @@ export default function ComoSeriaMenu() {
       nav.removeEventListener("mouseup",    onMouseUp);
       nav.removeEventListener("mousemove",  onMouseMove);
     };
-  }, []);
+  }, [menuLoading]);
 
   // Modal state
   const [modalQty, setModalQty] = useState(1);
@@ -438,8 +383,19 @@ export default function ComoSeriaMenu() {
     if (!paymentMethod) {
       return;
     }
-    // Save order to localStorage for metrics
-    saveOrder({ customerName, cart, cartTotal });
+    // Guardar el pedido en el backend para las métricas del panel de admin
+    const deliveryFee = deliveryType === "domicilio" ? (deliveryLocation?.price || 0) : 0;
+    saveOrder({
+      customerName: customerName.trim(),
+      items: cart,
+      subtotal: cartTotal,
+      deliveryFee,
+      total: cartTotal + deliveryFee,
+      deliveryType,
+      deliveryLocation: deliveryLocation?.name || null,
+      deliveryAddress: deliveryType === "domicilio" ? deliveryAddress.trim() : null,
+      paymentMethod,
+    });
     const msg = buildWhatsAppMessage();
     window.open(`https://wa.me/${WHATSAPP_NUMBER}?text=${msg}`, "_blank");
   };
@@ -462,6 +418,23 @@ export default function ComoSeriaMenu() {
   // Route to admin dashboard
   if (window.location.pathname === "/admin") {
     return <AdminDashboard />;
+  }
+
+  if (menuLoading) {
+    return (
+      <div className="menu-loading">
+        <div className="menu-loading-spinner" />
+        <p>Cargando menú...</p>
+      </div>
+    );
+  }
+
+  if (menuError) {
+    return (
+      <div className="menu-loading">
+        <p>No se pudo cargar el menú. Intenta recargar la página.</p>
+      </div>
+    );
   }
 
   return (
@@ -599,22 +572,24 @@ export default function ComoSeriaMenu() {
             {items.map((item, idx) => {
               const inCartQty = getItemQtyInCart(item.id);
               const isSimple = catKey === "adiciones" || catKey === "bebidas";
-              const isBM = item.isBurgerMaster;
+              const isSpecial = item.special;
               return (
                 <div
                   key={item.id}
                   id={`product-${item.id}`}
-                  className={`product-card ${inCartQty > 0 ? "in-cart" : ""} ${isBM ? "bm-card" : ""}`}
+                  className={`product-card ${inCartQty > 0 ? "in-cart" : ""} ${isSpecial ? "bm-card" : ""}`}
                   style={{ animationDelay: `${idx * 0.05}s` }}
                   onClick={() => !isSimple && openModal(item, catKey)}
                 >
-                  {isBM && (
+                  {isSpecial && (
                     <div className="bm-header">
-                      <img src="/bm2026.png" alt="Burger Master 2026" className="bm-logo" />
-                      <span className="bm-badge">👑 EDICIÓN ESPECIAL</span>
+                      {item.isBurgerMaster && (
+                        <img src="/bm2026.png" alt="Burger Master 2026" className="bm-logo" />
+                      )}
+                      <span className="bm-badge">🎉 EDICIÓN ESPECIAL</span>
                     </div>
                   )}
-                  {isBM && item.burgerImg && (
+                  {isSpecial && item.burgerImg && (
                     <div className="bm-burger-img-wrap">
                       <img src={item.burgerImg} alt={item.name} className="bm-burger-img" />
                     </div>
@@ -677,12 +652,6 @@ export default function ComoSeriaMenu() {
           <div className="footer-loc"><IconMapPin /> Country Mall, Jamundí - Valle del Cauca</div>
           <p className="footer-copy">© 2025 Cómo Sería. Todos los derechos reservados.</p>
           <p className="footer-powered">Instagram: <a href="https://www.instagram.com/somoscomoseria" target="_blank" rel="noopener">@somoscomoseria</a></p>
-          <div className="footer-corxium">
-            <span className="footer-corxium-label">Desarrollado por</span>
-            <a href="https://www.corxium.com/" target="_blank" rel="noopener noreferrer">
-              <img src="/corxium.svg" alt="Corxium SAS" className="footer-corxium-logo" />
-            </a>
-          </div>
         </footer>
 
         {/* FLOATING BAR */}
@@ -713,7 +682,7 @@ export default function ComoSeriaMenu() {
             <div className="modal-handle" />
             <div className="modal-header">
               <div>
-                {modalItem.isBurgerMaster && (
+                {modalItem.special && modalItem.isBurgerMaster && (
                   <div className="modal-bm-logo-wrap">
                     <img src="/bm2026.png" alt="Burger Master 2026" className="modal-bm-logo" />
                   </div>
