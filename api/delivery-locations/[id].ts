@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { query } from "../_lib/db";
-import { requireAdmin } from "../_lib/auth";
+import { query } from "../_lib/db.js";
+import { requireAdmin } from "../_lib/auth.js";
 
 interface UpdateBody {
   name?: string;
