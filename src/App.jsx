@@ -84,8 +84,11 @@ export default function ComoSeriaMenu() {
   const [menuError, setMenuError] = useState(false);
   const [DELIVERY_LOCATIONS, setDeliveryLocations] = useState([]);
 
-  useEffect(() => {
-    Promise.all([
+  // Carga el menú y las zonas de domicilio. En la carga inicial muestra el
+  // spinner/error de pantalla completa; en las actualizaciones de fondo (poll)
+  // solo refresca los datos en silencio, sin interrumpir al cliente.
+  const loadMenuData = useCallback((isInitial) => {
+    return Promise.all([
       fetch("/api/menu").then((r) => {
         if (!r.ok) throw new Error("No se pudo cargar el menú");
         return r.json();
@@ -98,13 +101,22 @@ export default function ComoSeriaMenu() {
       .then(([menuData, deliveryData]) => {
         setMENU(menuData);
         setDeliveryLocations(deliveryData.locations || []);
-        setMenuLoading(false);
+        if (isInitial) setMenuLoading(false);
       })
       .catch(() => {
-        setMenuError(true);
-        setMenuLoading(false);
+        if (isInitial) {
+          setMenuError(true);
+          setMenuLoading(false);
+        }
+        // si falla una actualización de fondo, simplemente se reintenta en el próximo ciclo
       });
   }, []);
+
+  useEffect(() => {
+    loadMenuData(true);
+    const interval = setInterval(() => loadMenuData(false), 60000);
+    return () => clearInterval(interval);
+  }, [loadMenuData]);
 
   // Evaluar qué flechas mostrar según la posición del scroll
   const checkScrollArrows = useCallback(() => {

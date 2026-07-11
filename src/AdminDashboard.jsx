@@ -41,6 +41,8 @@ async function api(path, options) {
 }
 
 const PAYMENT_LABELS = { "qr-bold": "QR de Bold", nequi: "Nequi", transferencia: "Transferencia" };
+const RANK_MEDALS = ["🥇", "🥈", "🥉"];
+const rankBadge = (i) => RANK_MEDALS[i] || `#${i + 1}`;
 
 const getTodayKey = () => new Date().toISOString().slice(0, 10);
 
@@ -98,7 +100,7 @@ function buildProductRanking(orders) {
       map.set(p.name, entry);
     });
   });
-  return [...map.values()].sort((a, b) => b.qty - a.qty).slice(0, 8);
+  return [...map.values()].sort((a, b) => b.qty - a.qty || b.total - a.total).slice(0, 8);
 }
 
 function buildPaymentBreakdown(orders) {
@@ -110,7 +112,7 @@ function buildPaymentBreakdown(orders) {
     entry.total += o.total;
     map.set(key, entry);
   });
-  return [...map.values()].sort((a, b) => b.total - a.total);
+  return [...map.values()].sort((a, b) => b.count - a.count || b.total - a.total);
 }
 
 function buildDeliveryBreakdown(orders) {
@@ -131,7 +133,7 @@ function buildDeliveryBreakdown(orders) {
     domicilioCount: domicilioOrders.length,
     domicilioTotal: domicilioOrders.reduce((s, o) => s + o.total, 0),
     domicilioFeeTotal: domicilioOrders.reduce((s, o) => s + (o.deliveryFee || 0), 0),
-    zones: [...byZone.values()].sort((a, b) => b.count - a.count),
+    zones: [...byZone.values()].sort((a, b) => b.count - a.count || b.deliveryTotal - a.deliveryTotal),
   };
 }
 
@@ -525,38 +527,122 @@ function StatCard({ icon, label, value, sub, accent }) {
   );
 }
 
-// ─── BAR CHART ─────────────────────────────────────────────────────────────
-function BarChart({ orders }) {
+// Genera un path SVG suave (Catmull-Rom → Bézier) a través de una serie de puntos.
+function smoothPath(points) {
+  let d = `M${points[0].x},${points[0].y}`;
+  for (let i = 0; i < points.length - 1; i++) {
+    const p0 = points[i - 1] || points[i];
+    const p1 = points[i];
+    const p2 = points[i + 1];
+    const p3 = points[i + 2] || p2;
+    const cp1x = p1.x + (p2.x - p0.x) / 6;
+    const cp1y = p1.y + (p2.y - p0.y) / 6;
+    const cp2x = p2.x - (p3.x - p1.x) / 6;
+    const cp2y = p2.y - (p3.y - p1.y) / 6;
+    d += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
+  }
+  return d;
+}
+
+// Gráfico de área/línea de ventas: la altura codifica la venta ($), y la
+// cantidad de pedidos se ve en el tooltip (por defecto muestra "Hoy").
+function TrendChart({ orders }) {
   const days = getLast7Days();
-  const countByDay = {};
+  const today = getTodayKey();
+  const [hoverIndex, setHoverIndex] = useState(null);
+  const svgRef = useRef(null);
+
+  const dataByDay = {};
   orders.forEach((o) => {
-    countByDay[o.date] = (countByDay[o.date] || 0) + 1;
+    const entry = dataByDay[o.date] || { count: 0, revenue: 0 };
+    entry.count += 1;
+    entry.revenue += o.total;
+    dataByDay[o.date] = entry;
   });
-  const maxCount = Math.max(...days.map((d) => countByDay[d.key] || 0), 1);
+
+  const W = 700, H = 200, PAD_X = 28, PAD_TOP = 46, PAD_BOTTOM = 26;
+  const plotW = W - PAD_X * 2;
+  const plotH = H - PAD_TOP - PAD_BOTTOM;
+  const maxRevenue = Math.max(...days.map((d) => dataByDay[d.key]?.revenue || 0), 1);
+  const baseY = PAD_TOP + plotH;
+
+  const points = days.map((d, i) => {
+    const data = dataByDay[d.key] || { count: 0, revenue: 0 };
+    const x = PAD_X + (plotW / (days.length - 1)) * i;
+    const y = baseY - (data.revenue / maxRevenue) * plotH;
+    return { x, y, day: d, ...data };
+  });
+
+  const linePath = smoothPath(points);
+  const areaPath = `${linePath} L${points[points.length - 1].x},${baseY} L${points[0].x},${baseY} Z`;
+
+  const handleMove = (e) => {
+    const svg = svgRef.current;
+    if (!svg) return;
+    const rect = svg.getBoundingClientRect();
+    const localX = ((e.clientX - rect.left) / rect.width) * W;
+    let closest = 0;
+    let minDist = Infinity;
+    points.forEach((p, i) => {
+      const dist = Math.abs(p.x - localX);
+      if (dist < minDist) { minDist = dist; closest = i; }
+    });
+    setHoverIndex(closest);
+  };
+
+  const activeIndex = hoverIndex != null ? hoverIndex : points.findIndex((p) => p.day.key === today);
+  const active = points[activeIndex >= 0 ? activeIndex : points.length - 1];
+
+  const tooltipW = 132, tooltipH = 44;
+  const tipX = Math.max(4, Math.min(W - tooltipW - 4, active.x - tooltipW / 2));
+  const tipY = Math.max(2, active.y - tooltipH - 10);
 
   return (
-    <div className="adm-chart-wrap">
-      {days.map((d) => {
-        const count = countByDay[d.key] || 0;
-        const heightPct = Math.max((count / maxCount) * 100, 4);
-        const isToday = d.key === getTodayKey();
-        return (
-          <div key={d.key} className="adm-bar-col">
-            <div className="adm-bar-count">{count > 0 ? count : ""}</div>
-            <div className="adm-bar-track">
-              <div
-                className={`adm-bar-fill ${isToday ? "today" : ""}`}
-                style={{ height: `${heightPct}%` }}
-              />
-            </div>
-            <div className={`adm-bar-label ${isToday ? "today" : ""}`}>
-              {d.short}
-              {isToday && <span className="adm-today-dot" />}
-            </div>
-          </div>
-        );
-      })}
-    </div>
+    <svg
+      ref={svgRef}
+      viewBox={`0 0 ${W} ${H}`}
+      className="adm-trend-chart"
+      onMouseMove={handleMove}
+      onMouseLeave={() => setHoverIndex(null)}
+    >
+      <defs>
+        <linearGradient id="trendFill" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#2AAF4A" stopOpacity="0.35" />
+          <stop offset="100%" stopColor="#2AAF4A" stopOpacity="0" />
+        </linearGradient>
+      </defs>
+
+      <line x1={PAD_X} y1={baseY} x2={W - PAD_X} y2={baseY} className="adm-trend-baseline" />
+      <line x1={active.x} y1={PAD_TOP} x2={active.x} y2={baseY} className="adm-trend-guide" />
+
+      <path d={areaPath} className="adm-trend-area" />
+      <path d={linePath} className="adm-trend-line" />
+
+      {points.map((p, i) => (
+        <circle
+          key={p.day.key}
+          cx={p.x} cy={p.y}
+          r={i === activeIndex ? 6 : 3.5}
+          className={`adm-trend-dot ${p.day.key === today ? "today" : ""}`}
+        />
+      ))}
+
+      {points.map((p) => (
+        <text key={p.day.key} x={p.x} y={H - 6} textAnchor="middle" className={`adm-trend-day-label ${p.day.key === today ? "today" : ""}`}>
+          {p.day.short}
+        </text>
+      ))}
+
+      <g transform={`translate(${tipX}, ${tipY})`}>
+        <rect width={tooltipW} height={tooltipH} rx="10" className="adm-trend-tooltip-bg" />
+        <text x={tooltipW / 2} y="18" textAnchor="middle" className="adm-trend-tooltip-title">
+          {active.count} {active.count === 1 ? "pedido" : "pedidos"}
+        </text>
+        <text x={tooltipW / 2} y="35" textAnchor="middle" className="adm-trend-tooltip-value">
+          {fmt(active.revenue)}
+        </text>
+      </g>
+    </svg>
   );
 }
 
@@ -1118,8 +1204,6 @@ export default function AdminDashboard() {
   }
 
   // ── COMPUTE STATS (todas sobre filteredOrders, según el rango elegido) ──
-  const today = getTodayKey();
-  const last7Days = getLast7Days();
   const rangeRevenue = filteredOrders.reduce((s, o) => s + o.total, 0);
   const rangeAvg = filteredOrders.length > 0 ? Math.round(rangeRevenue / filteredOrders.length) : 0;
   const productRanking = buildProductRanking(filteredOrders);
@@ -1253,35 +1337,11 @@ export default function AdminDashboard() {
               />
             </div>
 
-            {/* Bar Chart */}
+            {/* Ventas y pedidos por día */}
             <div className="adm-section">
-              <div className="adm-section-title">Pedidos — últimos 7 días</div>
+              <div className="adm-section-title">Ventas y pedidos — últimos 7 días</div>
               <div className="adm-chart-container">
-                <BarChart orders={orders} />
-              </div>
-            </div>
-
-            {/* Day breakdown */}
-            <div className="adm-section">
-              <div className="adm-section-title">Detalle por día</div>
-              <div className="adm-day-table">
-                {last7Days.reverse().map((d) => {
-                  const dayOrders = orders.filter((o) => o.date === d.key);
-                  const dayTotal = dayOrders.reduce((s, o) => s + o.total, 0);
-                  const isToday = d.key === today;
-                  return (
-                    <div key={d.key} className={`adm-day-row ${isToday ? "today" : ""}`}>
-                      <div className="adm-day-label">
-                        {d.label}
-                        {isToday && <span className="adm-today-chip">Hoy</span>}
-                      </div>
-                      <div className="adm-day-count">
-                        {dayOrders.length} {dayOrders.length === 1 ? "pedido" : "pedidos"}
-                      </div>
-                      <div className="adm-day-total">{dayTotal > 0 ? fmt(dayTotal) : "—"}</div>
-                    </div>
-                  );
-                })}
+                <TrendChart orders={orders} />
               </div>
             </div>
 
@@ -1294,7 +1354,7 @@ export default function AdminDashboard() {
                 <div className="adm-ranking-list">
                   {productRanking.map((p, i) => (
                     <div key={p.name} className="adm-ranking-row">
-                      <span className="adm-ranking-pos">#{i + 1}</span>
+                      <span className="adm-ranking-pos">{rankBadge(i)}</span>
                       <span className="adm-ranking-name">{p.name}</span>
                       <span className="adm-ranking-qty">{p.qty} und.</span>
                       <span className="adm-ranking-total">{fmt(p.total)}</span>
@@ -1311,9 +1371,12 @@ export default function AdminDashboard() {
                 <p className="adm-menu-empty">Sin pedidos en este rango.</p>
               ) : (
                 <div className="adm-day-table">
-                  {paymentBreakdown.map((p) => (
+                  {paymentBreakdown.map((p, i) => (
                     <div key={p.method} className="adm-day-row">
-                      <div className="adm-day-label">{PAYMENT_LABELS[p.method] || p.method}</div>
+                      <div className="adm-day-label">
+                        <span className="adm-day-pos">#{i + 1}</span>
+                        {PAYMENT_LABELS[p.method] || p.method}
+                      </div>
                       <div className="adm-day-count">{p.count} {p.count === 1 ? "pedido" : "pedidos"}</div>
                       <div className="adm-day-total">{fmt(p.total)}</div>
                     </div>
@@ -1330,14 +1393,18 @@ export default function AdminDashboard() {
                 <StatCard icon="🛵" label="A domicilio" value={deliveryBreakdown.domicilioCount} sub={fmt(deliveryBreakdown.domicilioTotal)} accent="#2563EB" />
               </div>
               {deliveryBreakdown.zones.length > 0 && (
-                <div className="adm-day-table adm-mt-12">
-                  {deliveryBreakdown.zones.map((z) => (
-                    <div key={z.name} className="adm-day-row">
-                      <div className="adm-day-label">{z.name}</div>
-                      <div className="adm-day-count">{z.count} {z.count === 1 ? "pedido" : "pedidos"}</div>
-                      <div className="adm-day-total">{fmt(z.deliveryTotal)}</div>
-                    </div>
-                  ))}
+                <div className="adm-mt-12">
+                  <div className="adm-menu-category-title">🏆 Top Zonas</div>
+                  <div className="adm-ranking-list">
+                    {deliveryBreakdown.zones.map((z, i) => (
+                      <div key={z.name} className="adm-ranking-row">
+                        <span className="adm-ranking-pos">{rankBadge(i)}</span>
+                        <span className="adm-ranking-name">{z.name}</span>
+                        <span className="adm-ranking-qty">{z.count} {z.count === 1 ? "pedido" : "pedidos"}</span>
+                        <span className="adm-ranking-total">{fmt(z.deliveryTotal)}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
