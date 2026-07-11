@@ -24,7 +24,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.dev
-    command: node --experimental-strip-types scripts/dev-api-server.mjs
+    command: node scripts/dev-api-server.mjs
     environment:
       DATABASE_URL: postgres://postgres:postgres@db:5432/comoseria
       ADMIN_PASSWORD: comoseria-test-2026

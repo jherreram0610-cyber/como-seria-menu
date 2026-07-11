@@ -1,8 +1,8 @@
 import crypto from "node:crypto";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { query } from "../_lib/db.ts";
-import { isAdminRequest, requireAdmin } from "../_lib/auth.ts";
-import { CATEGORIES, groupByCategory, type MenuItemRow, type Category } from "../_lib/menu.ts";
+import { query } from "../_lib/db";
+import { isAdminRequest, requireAdmin } from "../_lib/auth";
+import { CATEGORIES, groupByCategory, type MenuItemRow, type Category } from "../_lib/menu";
 
 interface CreateBody {
   category?: Category;
