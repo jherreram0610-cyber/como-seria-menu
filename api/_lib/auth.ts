@@ -65,10 +65,19 @@ export function requireAdmin(req: VercelRequest, res: VercelResponse): boolean {
   return true;
 }
 
-export function checkPassword(password: string): boolean {
-  const expected = process.env.ADMIN_PASSWORD || "";
-  if (!expected) return false;
-  const a = Buffer.from(password);
-  const b = Buffer.from(expected);
+// Hash de contraseñas con scrypt (nativo de Node, sin dependencias nuevas).
+// Formato guardado: "salt:hash", ambos en hex.
+export function hashPassword(password: string): string {
+  const salt = crypto.randomBytes(16).toString("hex");
+  const hash = crypto.scryptSync(password, salt, 64).toString("hex");
+  return `${salt}:${hash}`;
+}
+
+export function verifyPasswordHash(password: string, stored: string): boolean {
+  const [salt, hash] = stored.split(":");
+  if (!salt || !hash) return false;
+  const candidate = crypto.scryptSync(password, salt, 64).toString("hex");
+  const a = Buffer.from(hash, "hex");
+  const b = Buffer.from(candidate, "hex");
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }

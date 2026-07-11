@@ -613,12 +613,24 @@ body {
 .adm-pin-sub { font-size: 13px; color: var(--gray-500); margin-bottom: 28px; }
 .adm-pin-form { display: flex; flex-direction: column; gap: 12px; }
 .adm-pin-input {
-  width: 100%; padding: 14px 16px; border-radius: 12px;
+  width: 100%; padding: 14px 40px 14px 16px; border-radius: 12px;
   border: 1.5px solid #333; background: #111; color: var(--white);
   font-family: 'DM Sans', sans-serif; font-size: 16px; text-align: center;
   letter-spacing: 4px; outline: none; transition: border-color 0.2s;
 }
 .adm-pin-input:focus { border-color: var(--green); }
+
+/* ─── OJITO PARA REVELAR CONTRASEÑA ─── */
+.adm-password-wrap { position: relative; display: flex; }
+.adm-password-wrap input { flex: 1; }
+.adm-password-toggle {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  background: transparent; border: none; cursor: pointer; color: var(--gray-500);
+  padding: 6px; border-radius: 8px; display: flex; align-items: center; justify-content: center;
+  transition: color 0.15s, background 0.15s;
+}
+.adm-password-toggle:hover { color: var(--gray-300); background: rgba(255,255,255,0.06); }
+.adm-password-wrap input { padding-right: 38px; }
 .adm-pin-input.error { border-color: var(--red); animation: shake 0.3s ease; }
 @keyframes shake {
   0%, 100% { transform: translateX(0); }
@@ -813,6 +825,17 @@ body {
   background: #222; color: var(--gray-500); padding: 3px 10px; border-radius: 20px;
   letter-spacing: 0;
 }
+
+/* ─── MODAL (cambiar contraseña) ─── */
+.adm-modal-overlay {
+  position: fixed; inset: 0; background: rgba(0,0,0,0.6); z-index: 100;
+  display: flex; align-items: center; justify-content: center; padding: 20px;
+}
+.adm-modal-card {
+  background: #141414; border: 1.5px solid #222; border-radius: 16px; padding: 22px;
+  width: 100%; max-width: 360px; box-shadow: var(--shadow-lg);
+}
+.adm-modal-success { color: var(--green-light); font-size: 14px; font-weight: 600; text-align: center; padding: 12px 0; }
 
 /* ─── CHART CONTAINER ─── */
 .adm-chart-container {

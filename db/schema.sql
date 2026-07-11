@@ -46,5 +46,14 @@ create table if not exists delivery_locations (
   updated_at  timestamptz not null default now()
 );
 
+-- Una sola fila (id fijo 'singleton'): la contraseña del panel de admin,
+-- hasheada con scrypt. Se siembra desde ADMIN_PASSWORD la primera vez
+-- (ver scripts/seed-menu.mjs) y después se puede cambiar desde el panel.
+create table if not exists admin_settings (
+  id            text primary key default 'singleton',
+  password_hash text not null,
+  updated_at    timestamptz not null default now()
+);
+
 create index if not exists orders_created_at_idx on orders (created_at desc);
 create index if not exists menu_items_category_idx on menu_items (category, sort_order);

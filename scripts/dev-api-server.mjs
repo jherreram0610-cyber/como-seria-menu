@@ -50,6 +50,7 @@ const routes = [
   { pattern: /^\/api\/admin\/login$/, file: "admin/login.ts" },
   { pattern: /^\/api\/admin\/logout$/, file: "admin/logout.ts" },
   { pattern: /^\/api\/admin\/me$/, file: "admin/me.ts" },
+  { pattern: /^\/api\/admin\/change-password$/, file: "admin/change-password.ts" },
 ];
 
 function readBody(req) {

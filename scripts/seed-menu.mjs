@@ -8,6 +8,7 @@
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import crypto from "node:crypto";
 import pg from "pg";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -137,6 +138,21 @@ async function main() {
       if (result.rowCount > 0) insertedLocations++;
     }
     console.log(`✓ ${insertedLocations} zona(s) de domicilio nueva(s) insertada(s)`);
+
+    const adminPassword = process.env.ADMIN_PASSWORD;
+    if (adminPassword) {
+      const salt = crypto.randomBytes(16).toString("hex");
+      const hash = crypto.scryptSync(adminPassword, salt, 64).toString("hex");
+      const result = await client.query(
+        `insert into admin_settings (id, password_hash) values ('singleton', $1) on conflict (id) do nothing`,
+        [`${salt}:${hash}`]
+      );
+      console.log(
+        result.rowCount > 0
+          ? "✓ Contraseña de admin inicial sembrada desde ADMIN_PASSWORD"
+          : "✓ Ya existía una contraseña de admin guardada (no se tocó)"
+      );
+    }
   } finally {
     await client.end();
   }
