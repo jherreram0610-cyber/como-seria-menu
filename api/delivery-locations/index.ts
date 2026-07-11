@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
-import { query } from "../_lib/db.ts";
-import { isAdminRequest, requireAdmin } from "../_lib/auth.ts";
+import { query } from "../_lib/db";
+import { isAdminRequest, requireAdmin } from "../_lib/auth";
 
 interface LocationRow {
   id: string;

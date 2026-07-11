@@ -2,16 +2,44 @@
 // desarrollo (vite dev hace proxy de /api hacia este servidor, ver vite.config.js).
 // No se usa en producción — en Vercel cada archivo de /api se despliega tal cual.
 //
-// Uso: node --env-file=.env --experimental-strip-types scripts/dev-api-server.mjs
+// Los archivos de /api usan imports relativos SIN extensión (ej. "../_lib/db"),
+// igual que espera Vercel en producción. Para poder correrlos con Node aquí en
+// local, cada archivo se compila al vuelo con esbuild (el mismo bundler que usa
+// Vite) en vez de depender de la resolución nativa de módulos de Node.
+//
+// Uso: node --env-file=.env scripts/dev-api-server.mjs
 
 import http from "node:http";
 import { pathToFileURL } from "node:url";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { mkdirSync, writeFileSync, rmSync } from "node:fs";
+import * as esbuild from "esbuild";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const apiDir = path.join(__dirname, "..", "api");
 const PORT = process.env.DEV_API_PORT || 3001;
+// Tiene que vivir DENTRO del proyecto (no en el /tmp del sistema) para que Node
+// pueda resolver paquetes de npm como "pg" subiendo por sus node_modules.
+const buildDir = path.join(__dirname, "..", "node_modules", ".cache", "dev-api");
+mkdirSync(buildDir, { recursive: true });
+process.on("exit", () => { try { rmSync(buildDir, { recursive: true, force: true }); } catch { /* noop */ } });
+
+async function loadHandler(filePath) {
+  const result = await esbuild.build({
+    entryPoints: [filePath],
+    bundle: true,
+    platform: "node",
+    format: "esm",
+    packages: "external", // deja pg y demás paquetes de npm para que Node los resuelva normal
+    write: false,
+  });
+  const outFile = path.join(buildDir, `${Date.now()}-${Math.random().toString(36).slice(2)}.mjs`);
+  writeFileSync(outFile, result.outputFiles[0].text);
+  const mod = await import(pathToFileURL(outFile).href);
+  rmSync(outFile, { force: true });
+  return mod.default;
+}
 
 const routes = [
   { pattern: /^\/api\/menu\/([^/]+)$/, file: "menu/[id].ts", paramNames: ["id"] },
@@ -68,9 +96,8 @@ const server = http.createServer(async (req, res) => {
   req.body = await readBody(req);
 
   try {
-    const modUrl = pathToFileURL(path.join(apiDir, match.file)).href;
-    const mod = await import(modUrl);
-    await mod.default(req, res);
+    const handler = await loadHandler(path.join(apiDir, match.file));
+    await handler(req, res);
   } catch (err) {
     console.error(err);
     if (!res.headersSent) res.status(500).json({ error: "Error interno" });

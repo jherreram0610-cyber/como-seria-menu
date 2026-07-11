@@ -11,7 +11,7 @@
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "db:seed": "node --env-file=.env scripts/seed-menu.mjs",
-    "dev:api": "node --env-file=.env --experimental-strip-types scripts/dev-api-server.mjs"
+    "dev:api": "node --env-file=.env scripts/dev-api-server.mjs"
   },
   "dependencies": {
     "jspdf": "^4.2.1",
@@ -28,6 +28,7 @@
     "@types/react-dom": "^19.2.3",
     "@vercel/node": "^5.8.23",
     "@vitejs/plugin-react": "^6.0.1",
+    "esbuild": "^0.27.0",
     "eslint": "^9.39.4",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.5.2",
