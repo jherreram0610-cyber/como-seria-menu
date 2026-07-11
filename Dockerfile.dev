@@ -1,0 +1,6 @@
+# Imagen de desarrollo local (no se usa para producción — en Vercel no hay Dockerfile).
+FROM node:24-alpine
+WORKDIR /app
+COPY package.json package-lock.json ./
+RUN npm install
+COPY . .
