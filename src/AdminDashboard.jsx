@@ -1,6 +1,19 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 
 const fmt = (n) => "$" + n.toLocaleString("es-CO");
+
+const IconEye = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+    <circle cx="12" cy="12" r="3" />
+  </svg>
+);
+const IconEyeOff = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M17.94 17.94A10.94 10.94 0 0112 20c-7 0-11-8-11-8a21.8 21.8 0 015.06-6.06M9.9 4.24A10.94 10.94 0 0112 4c7 0 11 8 11 8a21.77 21.77 0 01-3.22 4.44M14.12 14.12a3 3 0 11-4.24-4.24" />
+    <line x1="1" y1="1" x2="23" y2="23" />
+  </svg>
+);
 const CATEGORY_LABELS = { hamburguesas: "Hamburguesas", tenders: "Chicken Tenders", combos: "Combos", adiciones: "Adiciones", bebidas: "Bebidas" };
 const CATEGORIES = Object.keys(CATEGORY_LABELS);
 
@@ -528,20 +541,51 @@ function StatCard({ icon, label, value, sub, accent }) {
 }
 
 // Genera un path SVG suave (Catmull-Rom → Bézier) a través de una serie de puntos.
+// Curva Hermite monotónica (Fritsch–Carlson), no Catmull-Rom: a diferencia de
+// una spline "suave" normal, esta nunca rebasa el rango de los puntos vecinos,
+// así que una racha de días en $0 seguida de un salto no dibuja un valle falso
+// por debajo de la línea base.
 function smoothPath(points) {
-  let d = `M${points[0].x},${points[0].y}`;
-  for (let i = 0; i < points.length - 1; i++) {
-    const p0 = points[i - 1] || points[i];
-    const p1 = points[i];
-    const p2 = points[i + 1];
-    const p3 = points[i + 2] || p2;
-    const cp1x = p1.x + (p2.x - p0.x) / 6;
-    const cp1y = p1.y + (p2.y - p0.y) / 6;
-    const cp2x = p2.x - (p3.x - p1.x) / 6;
-    const cp2y = p2.y - (p3.y - p1.y) / 6;
-    d += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${p2.x},${p2.y}`;
+  const n = points.length;
+  const xs = points.map((p) => p.x);
+  const ys = points.map((p) => p.y);
+  const dx = xs[1] - xs[0];
+
+  const d = [];
+  for (let i = 0; i < n - 1; i++) d.push((ys[i + 1] - ys[i]) / dx);
+
+  const m = new Array(n);
+  m[0] = d[0];
+  m[n - 1] = d[n - 2];
+  for (let i = 1; i < n - 1; i++) {
+    m[i] = d[i - 1] === 0 || d[i] === 0 || (d[i - 1] > 0) !== (d[i] > 0) ? 0 : (d[i - 1] + d[i]) / 2;
   }
-  return d;
+
+  for (let i = 0; i < n - 1; i++) {
+    if (d[i] === 0) {
+      m[i] = 0;
+      m[i + 1] = 0;
+      continue;
+    }
+    const a = m[i] / d[i];
+    const b = m[i + 1] / d[i];
+    const s = a * a + b * b;
+    if (s > 9) {
+      const tau = 3 / Math.sqrt(s);
+      m[i] = tau * a * d[i];
+      m[i + 1] = tau * b * d[i];
+    }
+  }
+
+  let path = `M${xs[0]},${ys[0]}`;
+  for (let i = 0; i < n - 1; i++) {
+    const cp1x = xs[i] + dx / 3;
+    const cp1y = ys[i] + (m[i] * dx) / 3;
+    const cp2x = xs[i + 1] - dx / 3;
+    const cp2y = ys[i + 1] - (m[i + 1] * dx) / 3;
+    path += ` C${cp1x},${cp1y} ${cp2x},${cp2y} ${xs[i + 1]},${ys[i + 1]}`;
+  }
+  return path;
 }
 
 // Gráfico de área/línea de ventas: la altura codifica la venta ($), y la
@@ -1098,15 +1142,125 @@ function DeliveryManager({ locations, reload }) {
   );
 }
 
+// ─── CAMPO DE CONTRASEÑA CON OJITO ──────────────────────────────────────────
+function PasswordField({ label, value, onChange, autoFocus, inputId }) {
+  const [visible, setVisible] = useState(false);
+  return (
+    <label className="adm-form-field" htmlFor={inputId}>
+      {label}
+      <div className="adm-password-wrap">
+        <input
+          id={inputId}
+          type={visible ? "text" : "password"}
+          value={value}
+          onChange={onChange}
+          autoFocus={autoFocus}
+        />
+        <button
+          type="button"
+          className="adm-password-toggle"
+          onClick={() => setVisible((v) => !v)}
+          tabIndex={-1}
+          aria-label={visible ? "Ocultar contraseña" : "Mostrar contraseña"}
+        >
+          {visible ? <IconEyeOff /> : <IconEye />}
+        </button>
+      </div>
+    </label>
+  );
+}
+
+// ─── CAMBIAR CONTRASEÑA ─────────────────────────────────────────────────────
+function ChangePasswordModal({ onClose }) {
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+  const [saving, setSaving] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (!currentPassword || !newPassword || !confirmPassword) {
+      setError("Completa los 3 campos");
+      return;
+    }
+    if (newPassword.length < 6) {
+      setError("La nueva contraseña debe tener al menos 6 caracteres");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setError("La confirmación no coincide con la nueva contraseña");
+      return;
+    }
+    setSaving(true);
+    try {
+      await api("/api/admin/change-password", {
+        method: "POST",
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      setSuccess(true);
+      setTimeout(onClose, 1500);
+    } catch (err) {
+      setError(err.message || "No se pudo cambiar la contraseña");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="adm-modal-overlay" onClick={onClose}>
+      <div className="adm-modal-card" onClick={(e) => e.stopPropagation()}>
+        <div className="adm-section-title">🔑 Cambiar contraseña</div>
+        {success ? (
+          <p className="adm-modal-success">✓ Contraseña actualizada</p>
+        ) : (
+          <form className="adm-product-form" onSubmit={submit}>
+            <PasswordField
+              inputId="current-password"
+              label="Contraseña actual"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              autoFocus
+            />
+            <PasswordField
+              inputId="new-password"
+              label="Nueva contraseña"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+            />
+            <PasswordField
+              inputId="confirm-password"
+              label="Confirmar nueva contraseña"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+            />
+            {error && <p className="adm-form-error">{error}</p>}
+            <div className="adm-form-actions">
+              <button type="button" className="adm-btn-ghost" onClick={onClose}>Cancelar</button>
+              <button type="submit" className="adm-btn-primary" disabled={saving}>
+                {saving ? <><span className="adm-btn-spinner" /> Guardando...</> : "Guardar"}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── ADMIN DASHBOARD ───────────────────────────────────────────────────────
 export default function AdminDashboard() {
   const [authState, setAuthState] = useState("checking"); // checking | locked | unlocked
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState(false);
+  const [pinVisible, setPinVisible] = useState(false);
   const [tab, setTab] = useState("resumen");
   const [orders, setOrders] = useState([]);
   const [menuData, setMenuData] = useState({});
   const [locations, setLocations] = useState([]);
+  const [showChangePassword, setShowChangePassword] = useState(false);
   const [exportingOrdersPdf, setExportingOrdersPdf] = useState(false);
   const [exportingSummaryPdf, setExportingSummaryPdf] = useState(false);
   const [rangePreset, setRangePreset] = useState("hoy");
@@ -1184,15 +1338,26 @@ export default function AdminDashboard() {
             <p className="adm-pin-sub">Verificando sesión...</p>
           ) : (
             <form onSubmit={handlePin} className="adm-pin-form">
-              <input
-                id="admin-pin"
-                className={`adm-pin-input ${pinError ? "error" : ""}`}
-                type="password"
-                placeholder="Contraseña"
-                value={pinInput}
-                onChange={(e) => setPinInput(e.target.value)}
-                autoFocus
-              />
+              <div className="adm-password-wrap">
+                <input
+                  id="admin-pin"
+                  className={`adm-pin-input ${pinError ? "error" : ""}`}
+                  type={pinVisible ? "text" : "password"}
+                  placeholder="Contraseña"
+                  value={pinInput}
+                  onChange={(e) => setPinInput(e.target.value)}
+                  autoFocus
+                />
+                <button
+                  type="button"
+                  className="adm-password-toggle"
+                  onClick={() => setPinVisible((v) => !v)}
+                  tabIndex={-1}
+                  aria-label={pinVisible ? "Ocultar contraseña" : "Mostrar contraseña"}
+                >
+                  {pinVisible ? <IconEyeOff /> : <IconEye />}
+                </button>
+              </div>
               {pinError && <p className="adm-pin-error">Contraseña incorrecta</p>}
               <button type="submit" className="adm-pin-btn">Ingresar →</button>
             </form>
@@ -1264,11 +1429,14 @@ export default function AdminDashboard() {
             </div>
           </div>
           <div className="adm-header-actions">
+            <button className="adm-export-btn" onClick={() => setShowChangePassword(true)}>🔑 Contraseña</button>
             <button className="adm-export-btn" onClick={handleLogout}>Cerrar sesión</button>
             <a href="/" className="adm-menu-link">Ver menú →</a>
           </div>
         </div>
       </header>
+
+      {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
 
       <main className="adm-main">
         {/* Tabs */}
