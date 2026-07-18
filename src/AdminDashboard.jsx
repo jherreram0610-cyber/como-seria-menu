@@ -1,6 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from "react";
+import logoImg from "/logo.svg";
 
 const fmt = (n) => "$" + n.toLocaleString("es-CO");
+const formatAdicion = (a, itemQty = 1) => {
+  // Pedidos guardados antes de que existiera el stepper de cantidad por
+  // adición no tienen `qty` en el JSON — tratarlos como 1 (su significado real).
+  const qty = a.qty ?? 1;
+  const total = qty * itemQty;
+  const label = total > 1 ? `${a.name} x${total}` : a.name;
+  return itemQty > 1 ? `${label} (x${qty} c/u)` : label;
+};
 
 const IconEye = () => (
   <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -14,8 +23,36 @@ const IconEyeOff = () => (
     <line x1="1" y1="1" x2="23" y2="23" />
   </svg>
 );
-const CATEGORY_LABELS = { hamburguesas: "Hamburguesas", tenders: "Chicken Tenders", combos: "Combos", adiciones: "Adiciones", bebidas: "Bebidas" };
-const CATEGORIES = Object.keys(CATEGORY_LABELS);
+const IconPrinter = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="6 9 6 2 18 2 18 9" />
+    <path d="M6 18H4a2 2 0 01-2-2v-5a2 2 0 012-2h16a2 2 0 012 2v5a2 2 0 01-2 2h-2" />
+    <rect x="6" y="14" width="12" height="8" />
+  </svg>
+);
+const IconTrash = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="3 6 5 6 21 6" />
+    <path d="M19 6v14a2 2 0 01-2 2H7a2 2 0 01-2-2V6m3 0V4a2 2 0 012-2h4a2 2 0 012 2v2" />
+  </svg>
+);
+const IconUser = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+    <circle cx="12" cy="7" r="4" />
+  </svg>
+);
+const IconSun = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <circle cx="12" cy="12" r="4" />
+    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+  </svg>
+);
+const IconMoon = () => (
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
+  </svg>
+);
 
 function resizeImageToDataUrl(file, maxWidth = 900, quality = 0.82) {
   return new Promise((resolve, reject) => {
@@ -57,7 +94,10 @@ const PAYMENT_LABELS = { "qr-bold": "QR de Bold", nequi: "Nequi", transferencia:
 const RANK_MEDALS = ["🥇", "🥈", "🥉"];
 const rankBadge = (i) => RANK_MEDALS[i] || `#${i + 1}`;
 
-const getTodayKey = () => new Date().toISOString().slice(0, 10);
+// OJO: nunca usar toISOString() para sacar la fecha — convierte a UTC y en
+// Colombia (UTC-5) cualquier pedido después de las 7pm cae "al día siguiente".
+// Se usa siempre dateKey() (getters locales del Date), definida más abajo.
+const getTodayKey = () => dateKey(new Date());
 
 const getLast7Days = () => {
   const days = [];
@@ -65,7 +105,7 @@ const getLast7Days = () => {
     const d = new Date();
     d.setDate(d.getDate() - i);
     days.push({
-      key: d.toISOString().slice(0, 10),
+      key: dateKey(d),
       label: d.toLocaleDateString("es-CO", { weekday: "short", day: "numeric" }),
       short: d.toLocaleDateString("es-CO", { weekday: "short" }),
     });
@@ -155,7 +195,7 @@ function mapOrderRow(row) {
   const products = Array.isArray(row.items) ? row.items : [];
   return {
     id: row.id,
-    date: created.toISOString().slice(0, 10),
+    date: dateKey(created),
     time: created.toLocaleTimeString("es-CO", { hour: "2-digit", minute: "2-digit" }),
     customerName: row.customer_name,
     itemsCount: products.reduce((s, i) => s + (i.qty || 1), 0),
@@ -200,7 +240,7 @@ function describeItem(item) {
     parts.push(`${item.side.name}${extra}`);
   }
   if (item.adiciones?.length) {
-    parts.push(`Adiciones: ${item.adiciones.map((a) => a.name).join(", ")}`);
+    parts.push(`Adiciones: ${item.adiciones.map((a) => formatAdicion(a, item.qty)).join(", ")}`);
   }
   if (item.agrandarPapas) parts.push(`Papas grandes (+${fmt(2000)})`);
   if (item.comment) parts.push(`Nota: ${item.comment}`);
@@ -717,7 +757,7 @@ function OrderDetail({ order }) {
           {item.bebida && <div className="adm-order-item-line">🥤 Bebida: {item.bebida.name}</div>}
           {item.side && <div className="adm-order-item-line">🍟 {item.side.name}</div>}
           {item.adiciones?.length > 0 && (
-            <div className="adm-order-item-line">➕ {item.adiciones.map((a) => a.name).join(", ")}</div>
+            <div className="adm-order-item-line">➕ {item.adiciones.map((a) => formatAdicion(a, item.qty)).join(", ")}</div>
           )}
           {item.agrandarPapas && <div className="adm-order-item-line">🍟 Papas grandes</div>}
           {item.comment && <div className="adm-order-item-line">💬 {item.comment}</div>}
@@ -734,9 +774,32 @@ function OrderDetail({ order }) {
 }
 
 // ─── RECENT ORDERS ─────────────────────────────────────────────────────────
-function RecentOrders({ orders }) {
+function RecentOrders({ orders, onPrint, onDelete, highlightOrderId }) {
   const [expandedId, setExpandedId] = useState(null);
-  const recent = [...orders].reverse().slice(0, 15);
+  const [flashId, setFlashId] = useState(null);
+  const [seenHighlight, setSeenHighlight] = useState(null);
+  const recent = orders.slice(0, 15);
+
+  // Al recibir un highlightOrderId nuevo (click en la notificación o el banner),
+  // expande y resalta ese pedido. Se ajusta durante el render (no en un efecto)
+  // porque es simplemente sincronizar el estado con la prop entrante.
+  if (highlightOrderId && highlightOrderId !== seenHighlight) {
+    setSeenHighlight(highlightOrderId);
+    setExpandedId(highlightOrderId);
+    setFlashId(highlightOrderId);
+  }
+
+  useEffect(() => {
+    if (!highlightOrderId) return;
+    document.getElementById(`order-${highlightOrderId}`)?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [highlightOrderId]);
+
+  useEffect(() => {
+    if (!flashId) return;
+    const t = setTimeout(() => setFlashId(null), 2400);
+    return () => clearTimeout(t);
+  }, [flashId]);
+
   if (recent.length === 0) {
     return (
       <div className="adm-empty-orders">
@@ -750,11 +813,15 @@ function RecentOrders({ orders }) {
       {recent.map((o, i) => {
         const isOpen = expandedId === o.id;
         return (
-          <div key={o.id || i} className="adm-order-wrap">
+          <div
+            key={o.id || i}
+            id={`order-${o.id}`}
+            className={`adm-order-wrap ${flashId === o.id ? "adm-order-flash" : ""} ${isOpen ? "adm-order-open" : ""}`}
+          >
             <div className="adm-order-row adm-order-row-clickable" onClick={() => setExpandedId(isOpen ? null : o.id)}>
               <div className="adm-order-left">
                 <div className="adm-order-name">
-                  <span className="adm-order-index">#{orders.length - i}</span>
+                  <span className="adm-order-index">#{i + 1}</span>
                   {o.customerName}
                 </div>
                 <div className="adm-order-meta">
@@ -762,6 +829,20 @@ function RecentOrders({ orders }) {
                 </div>
               </div>
               <div className="adm-order-right">
+                <button
+                  className="adm-order-print-btn"
+                  title="Imprimir comanda"
+                  onClick={(e) => { e.stopPropagation(); onPrint(o); }}
+                >
+                  <IconPrinter />
+                </button>
+                <button
+                  className="adm-order-delete-btn"
+                  title="Eliminar pedido"
+                  onClick={(e) => { e.stopPropagation(); onDelete(o); }}
+                >
+                  <IconTrash />
+                </button>
                 <div className="adm-order-total">{fmt(o.total)}</div>
                 <span className="adm-order-chevron">{isOpen ? "▾" : "▸"}</span>
               </div>
@@ -774,10 +855,68 @@ function RecentOrders({ orders }) {
   );
 }
 
+// ─── COMANDA DE IMPRESIÓN (58mm) ────────────────────────────────────────────
+function ComandaTemplate({ order }) {
+  return (
+    <div className="comanda-print">
+      <div className="comanda-banner">APP DOMICILIOS</div>
+      <div className="comanda-center comanda-title">CÓMO SERÍA</div>
+      <div className="comanda-center">COMANDA</div>
+      <div className="comanda-line" />
+      <div>Cliente: {order.customerName}</div>
+      <div>{order.date} · {order.time}</div>
+      <div className="comanda-line" />
+      {order.products.map((item, i) => (
+        <div key={i} className="comanda-item">
+          <div className="comanda-item-top">
+            <span>{item.qty} x {item.name}</span>
+            <span>{fmt((item.totalPrice ?? 0) * (item.qty || 1))}</span>
+          </div>
+          {item.removedIngredients?.length > 0 && <div>Sin: {item.removedIngredients.join(", ")}</div>}
+          {item.bebida && <div>Bebida: {item.bebida.name}</div>}
+          {item.side && <div>{item.side.name}</div>}
+          {item.adiciones?.length > 0 && item.adiciones.map((a) => (
+            <div key={a.id}>+ {formatAdicion(a, item.qty)}</div>
+          ))}
+          {item.agrandarPapas && <div>Papas grandes</div>}
+          {item.comment && <div>Nota: {item.comment}</div>}
+        </div>
+      ))}
+      <div className="comanda-line" />
+      <div>
+        {order.deliveryType === "domicilio"
+          ? `Domicilio: ${order.deliveryLocation || ""}`
+          : "Para recoger en tienda"}
+      </div>
+      {order.deliveryType === "domicilio" && order.deliveryAddress && (
+        <div className="comanda-address">
+          <div className="comanda-address-label">DIRECCIÓN</div>
+          {order.deliveryAddress}
+        </div>
+      )}
+      {order.paymentMethod && <div>Pago: {PAYMENT_LABELS[order.paymentMethod] || order.paymentMethod}</div>}
+      <div className="comanda-line" />
+      <div className="comanda-item-top">
+        <span>Subtotal</span><span>{fmt(order.subtotal)}</span>
+      </div>
+      {order.deliveryFee > 0 && (
+        <div className="comanda-item-top">
+          <span>Domicilio</span><span>{fmt(order.deliveryFee)}</span>
+        </div>
+      )}
+      <div className="comanda-item-top comanda-total">
+        <span>TOTAL</span><span>{fmt(order.total)}</span>
+      </div>
+      <div className="comanda-line" />
+      <div className="comanda-center">¡Gracias por tu pedido!</div>
+    </div>
+  );
+}
+
 // ─── FORMULARIO DE PRODUCTO ────────────────────────────────────────────────
-function ProductForm({ initial, onSubmit, onCancel }) {
+function ProductForm({ initial, categories, onSubmit, onCancel }) {
   const isEditing = !!initial?.id;
-  const [category, setCategory] = useState(initial?.category || "hamburguesas");
+  const [category, setCategory] = useState(initial?.category || categories[0]?.id || "");
   const [name, setName] = useState(initial?.name || "");
   const [price, setPrice] = useState(initial?.price ?? "");
   const [desc, setDesc] = useState(initial?.desc || "");
@@ -844,8 +983,8 @@ function ProductForm({ initial, onSubmit, onCancel }) {
       <label className="adm-form-field">
         Categoría
         <select value={category} onChange={(e) => setCategory(e.target.value)} disabled={isEditing}>
-          {CATEGORIES.map((c) => (
-            <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
+          {categories.map((c) => (
+            <option key={c.id} value={c.id}>{c.icon} {c.label}</option>
           ))}
         </select>
       </label>
@@ -921,8 +1060,9 @@ function ProductForm({ initial, onSubmit, onCancel }) {
 }
 
 // ─── ADMINISTRACIÓN DE MENÚ ────────────────────────────────────────────────
-function MenuManager({ menuData, reload }) {
+function MenuManager({ menuData, categories, reload }) {
   const [editingItem, setEditingItem] = useState(null);
+  const [deletingItem, setDeletingItem] = useState(null);
   const [busyId, setBusyId] = useState(null);
   const [error, setError] = useState("");
   const [toast, setToast] = useState(null);
@@ -968,6 +1108,7 @@ function MenuManager({ menuData, reload }) {
           <div className="adm-section-title">{editingItem.id ? `Editar: ${editingItem.name}` : "Nuevo producto"}</div>
           <ProductForm
             initial={editingItem.id ? editingItem : null}
+            categories={categories}
             onSubmit={(payload) => (editingItem.id ? handleUpdate(editingItem.id, payload) : handleCreate(payload))}
             onCancel={() => setEditingItem(null)}
           />
@@ -979,13 +1120,13 @@ function MenuManager({ menuData, reload }) {
             <button className="adm-btn-primary adm-btn-sm" onClick={() => setEditingItem({})}>+ Nuevo producto</button>
           </div>
           {error && <p className="adm-form-error">{error}</p>}
-          {CATEGORIES.map((cat) => (
-            <div key={cat} className="adm-menu-category">
-              <div className="adm-menu-category-title">{CATEGORY_LABELS[cat]}</div>
-              {(menuData[cat] || []).length === 0 && (
+          {categories.map((cat) => (
+            <div key={cat.id} className="adm-menu-category">
+              <div className="adm-menu-category-title">{cat.icon} {cat.label}</div>
+              {(menuData[cat.id] || []).length === 0 && (
                 <p className="adm-menu-empty">Sin productos en esta categoría.</p>
               )}
-              {(menuData[cat] || []).map((item) => (
+              {(menuData[cat.id] || []).map((item) => (
                 <div key={item.id} className={`adm-menu-row ${item.isActive === false ? "inactive" : ""}`}>
                   <div className="adm-menu-row-info">
                     <div className="adm-menu-row-name">
@@ -998,9 +1139,12 @@ function MenuManager({ menuData, reload }) {
                     <div className="adm-menu-row-price">{fmt(item.price)}</div>
                   </div>
                   <div className="adm-menu-row-actions">
-                    <button className="adm-btn-ghost adm-btn-sm" onClick={() => setEditingItem({ ...item, category: cat })}>Editar</button>
+                    <button className="adm-btn-ghost adm-btn-sm" onClick={() => setEditingItem({ ...item, category: cat.id })}>Editar</button>
                     <button className="adm-btn-ghost adm-btn-sm" disabled={busyId === item.id} onClick={() => toggleActive(item)}>
                       {item.isActive === false ? "Activar" : "Desactivar"}
+                    </button>
+                    <button className="adm-btn-ghost adm-btn-sm adm-btn-danger-ghost" onClick={() => setDeletingItem(item)}>
+                      Eliminar
                     </button>
                   </div>
                 </div>
@@ -1008,6 +1152,18 @@ function MenuManager({ menuData, reload }) {
             </div>
           ))}
         </div>
+      )}
+      {deletingItem && (
+        <DeleteConfirmModal
+          title="Eliminar producto"
+          message={`¿Eliminar "${deletingItem.name}" del menú? Esta acción no se puede deshacer.`}
+          onClose={() => setDeletingItem(null)}
+          onConfirm={async (pin) => {
+            await api(`/api/menu/${deletingItem.id}`, { method: "DELETE", body: JSON.stringify({ pin }) });
+            setDeletingItem(null);
+            reload();
+          }}
+        />
       )}
       {toast && <div className="adm-toast">✓ {toast}</div>}
     </>
@@ -1142,8 +1298,193 @@ function DeliveryManager({ locations, reload }) {
   );
 }
 
+// ─── FORMULARIO DE CATEGORÍA ────────────────────────────────────────────────
+function CategoryForm({ initial, onSubmit, onCancel }) {
+  const [label, setLabel] = useState(initial?.label || "");
+  const [icon, setIcon] = useState(initial?.icon || "");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!label.trim()) {
+      setError("El nombre es obligatorio");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      await onSubmit({ label: label.trim(), icon: icon.trim() });
+    } catch (err) {
+      setError(err.message || "No se pudo guardar");
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form className="adm-product-form" onSubmit={submit}>
+      <label className="adm-form-field">
+        Nombre de la categoría
+        <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Ej: Postres" />
+      </label>
+      <label className="adm-form-field">
+        Ícono (emoji)
+        <input value={icon} onChange={(e) => setIcon(e.target.value)} placeholder="🍰" maxLength={4} />
+      </label>
+      {error && <p className="adm-form-error">{error}</p>}
+      <div className="adm-form-actions">
+        <button type="button" className="adm-btn-ghost" onClick={onCancel}>Cancelar</button>
+        <button type="submit" className="adm-btn-primary" disabled={saving}>
+          {saving ? <><span className="adm-btn-spinner" /> Guardando...</> : "Guardar"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+// ─── ADMINISTRACIÓN DE CATEGORÍAS ───────────────────────────────────────────
+// Las 5 categorías originales sostienen lógica de negocio propia (combos,
+// adiciones/bebidas de agregado rápido) — se pueden renombrar/reordenar/
+// desactivar, pero no eliminar (el backend también lo bloquea).
+const BUILTIN_CATEGORY_IDS = ["hamburguesas", "tenders", "combos", "adiciones", "bebidas"];
+
+function CategoryManager({ categories, reload }) {
+  const [editingItem, setEditingItem] = useState(null);
+  const [deletingItem, setDeletingItem] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+  const [error, setError] = useState("");
+  const [toast, setToast] = useState(null);
+
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2200);
+  };
+
+  const handleCreate = async (payload) => {
+    await api("/api/categories", { method: "POST", body: JSON.stringify(payload) });
+    setEditingItem(null);
+    reload();
+    showToast("Categoría creada");
+  };
+
+  const handleUpdate = async (id, payload) => {
+    await api(`/api/categories/${id}`, { method: "PUT", body: JSON.stringify(payload) });
+    setEditingItem(null);
+    reload();
+    showToast("Categoría actualizada");
+  };
+
+  const toggleActive = async (cat) => {
+    setBusyId(cat.id);
+    setError("");
+    try {
+      const willActivate = cat.isActive === false;
+      await api(`/api/categories/${cat.id}`, { method: "PATCH", body: JSON.stringify({ isActive: willActivate }) });
+      reload();
+      showToast(willActivate ? "Categoría activada" : "Categoría desactivada");
+    } catch (err) {
+      setError(err.message || "No se pudo actualizar");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const move = async (index, direction) => {
+    const other = index + direction;
+    if (other < 0 || other >= categories.length) return;
+    const a = categories[index];
+    const b = categories[other];
+    setBusyId(a.id);
+    setError("");
+    try {
+      await Promise.all([
+        api(`/api/categories/${a.id}`, { method: "PUT", body: JSON.stringify({ sortOrder: other }) }),
+        api(`/api/categories/${b.id}`, { method: "PUT", body: JSON.stringify({ sortOrder: index }) }),
+      ]);
+      reload();
+    } catch (err) {
+      setError(err.message || "No se pudo reordenar");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <>
+      {editingItem ? (
+        <div className="adm-section">
+          <div className="adm-section-title">{editingItem.id ? `Editar: ${editingItem.label}` : "Nueva categoría"}</div>
+          <CategoryForm
+            initial={editingItem.id ? editingItem : null}
+            onSubmit={(payload) => (editingItem.id ? handleUpdate(editingItem.id, payload) : handleCreate(payload))}
+            onCancel={() => setEditingItem(null)}
+          />
+        </div>
+      ) : (
+        <div className="adm-section">
+          <div className="adm-section-title">
+            Categorías del menú
+            <button className="adm-btn-primary adm-btn-sm" onClick={() => setEditingItem({})}>+ Nueva categoría</button>
+          </div>
+          {error && <p className="adm-form-error">{error}</p>}
+          {categories.length === 0 && <p className="adm-menu-empty">Sin categorías.</p>}
+          {categories.map((cat, i) => (
+            <div key={cat.id} className={`adm-menu-row ${cat.isActive === false ? "inactive" : ""}`}>
+              <div className="adm-menu-row-info">
+                <div className="adm-menu-row-name">
+                  {cat.icon} {cat.label}
+                  {cat.isActive === false && <span className="adm-inactive-tag">Desactivado</span>}
+                </div>
+              </div>
+              <div className="adm-menu-row-actions">
+                <button
+                  className="adm-btn-ghost adm-btn-sm"
+                  disabled={i === 0 || busyId === cat.id}
+                  onClick={() => move(i, -1)}
+                  title="Subir"
+                >↑</button>
+                <button
+                  className="adm-btn-ghost adm-btn-sm"
+                  disabled={i === categories.length - 1 || busyId === cat.id}
+                  onClick={() => move(i, 1)}
+                  title="Bajar"
+                >↓</button>
+                <button className="adm-btn-ghost adm-btn-sm" onClick={() => setEditingItem(cat)}>Editar</button>
+                <button className="adm-btn-ghost adm-btn-sm" disabled={busyId === cat.id} onClick={() => toggleActive(cat)}>
+                  {cat.isActive === false ? "Activar" : "Desactivar"}
+                </button>
+                <button
+                  className="adm-btn-ghost adm-btn-sm adm-btn-danger-ghost"
+                  disabled={BUILTIN_CATEGORY_IDS.includes(cat.id)}
+                  title={BUILTIN_CATEGORY_IDS.includes(cat.id) ? "Esta categoría es del sistema y no se puede eliminar" : ""}
+                  onClick={() => setDeletingItem(cat)}
+                >
+                  Eliminar
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {deletingItem && (
+        <DeleteConfirmModal
+          title="Eliminar categoría"
+          message={`¿Eliminar la categoría "${deletingItem.label}"? Esta acción no se puede deshacer.`}
+          onClose={() => setDeletingItem(null)}
+          onConfirm={async (pin) => {
+            await api(`/api/categories/${deletingItem.id}`, { method: "DELETE", body: JSON.stringify({ pin }) });
+            setDeletingItem(null);
+            reload();
+          }}
+        />
+      )}
+      {toast && <div className="adm-toast">✓ {toast}</div>}
+    </>
+  );
+}
+
 // ─── CAMPO DE CONTRASEÑA CON OJITO ──────────────────────────────────────────
-function PasswordField({ label, value, onChange, autoFocus, inputId }) {
+function PasswordField({ label, value, onChange, autoFocus, inputId, maxLength, numeric }) {
   const [visible, setVisible] = useState(false);
   return (
     <label className="adm-form-field" htmlFor={inputId}>
@@ -1155,6 +1496,9 @@ function PasswordField({ label, value, onChange, autoFocus, inputId }) {
           value={value}
           onChange={onChange}
           autoFocus={autoFocus}
+          maxLength={maxLength}
+          inputMode={numeric ? "numeric" : undefined}
+          pattern={numeric ? "[0-9]*" : undefined}
         />
         <button
           type="button"
@@ -1250,8 +1594,154 @@ function ChangePasswordModal({ onClose }) {
   );
 }
 
+// ─── CAMBIAR PIN DE ELIMINACIÓN ─────────────────────────────────────────────
+function ChangeDeletePinModal({ onClose }) {
+  const [currentPin, setCurrentPin] = useState("");
+  const [newPin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const onlyDigits = (v) => v.replace(/\D/g, "").slice(0, 4);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (!currentPin || !newPin || !confirmPin) {
+      setError("Completa los 3 campos");
+      return;
+    }
+    if (newPin.length !== 4) {
+      setError("El nuevo PIN debe tener exactamente 4 dígitos");
+      return;
+    }
+    if (newPin !== confirmPin) {
+      setError("La confirmación no coincide con el nuevo PIN");
+      return;
+    }
+    setSaving(true);
+    try {
+      await api("/api/admin/change-delete-pin", {
+        method: "POST",
+        body: JSON.stringify({ currentPin, newPin }),
+      });
+      setSuccess(true);
+      setTimeout(onClose, 1500);
+    } catch (err) {
+      setError(err.message || "No se pudo cambiar el PIN");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="adm-modal-overlay" onClick={onClose}>
+      <div className="adm-modal-card" onClick={(e) => e.stopPropagation()}>
+        <div className="adm-section-title">🗑️ Cambiar clave de eliminación</div>
+        {success ? (
+          <p className="adm-modal-success">✓ PIN actualizado</p>
+        ) : (
+          <form className="adm-product-form" onSubmit={submit}>
+            <PasswordField
+              inputId="current-pin"
+              label="PIN actual (4 dígitos)"
+              value={currentPin}
+              onChange={(e) => setCurrentPin(onlyDigits(e.target.value))}
+              maxLength={4}
+              numeric
+              autoFocus
+            />
+            <PasswordField
+              inputId="new-pin"
+              label="Nuevo PIN (4 dígitos)"
+              value={newPin}
+              onChange={(e) => setNewPin(onlyDigits(e.target.value))}
+              maxLength={4}
+              numeric
+            />
+            <PasswordField
+              inputId="confirm-pin"
+              label="Confirmar nuevo PIN"
+              value={confirmPin}
+              onChange={(e) => setConfirmPin(onlyDigits(e.target.value))}
+              maxLength={4}
+              numeric
+            />
+            {error && <p className="adm-form-error">{error}</p>}
+            <div className="adm-form-actions">
+              <button type="button" className="adm-btn-ghost" onClick={onClose}>Cancelar</button>
+              <button type="submit" className="adm-btn-primary" disabled={saving}>
+                {saving ? <><span className="adm-btn-spinner" /> Guardando...</> : "Guardar"}
+              </button>
+            </div>
+          </form>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── ELIMINAR PEDIDO ─────────────────────────────────────────────────────────
+// { title, message, onClose, onConfirm(pin) } — onConfirm hace la llamada a la
+// API correspondiente (pedido/producto/categoría) y lanza si falla; el modal
+// solo se encarga de pedir el PIN y mostrar el error.
+function DeleteConfirmModal({ title, message, onClose, onConfirm }) {
+  const [pin, setPin] = useState("");
+  const [error, setError] = useState("");
+  const [deleting, setDeleting] = useState(false);
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setError("");
+    if (pin.length !== 4) {
+      setError("El PIN debe tener 4 dígitos");
+      return;
+    }
+    setDeleting(true);
+    try {
+      await onConfirm(pin);
+    } catch (err) {
+      setError(err.message || "No se pudo eliminar");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
+  return (
+    <div className="adm-modal-overlay" onClick={onClose}>
+      <div className="adm-modal-card" onClick={(e) => e.stopPropagation()}>
+        <div className="adm-section-title">🗑️ {title}</div>
+        <p className="adm-modal-warning">{message}</p>
+        <form className="adm-product-form" onSubmit={submit}>
+          <PasswordField
+            inputId="delete-confirm-pin"
+            label="Clave de eliminación (4 dígitos)"
+            value={pin}
+            onChange={(e) => setPin(e.target.value.replace(/\D/g, "").slice(0, 4))}
+            maxLength={4}
+            numeric
+            autoFocus
+          />
+          {error && <p className="adm-form-error">{error}</p>}
+          <div className="adm-form-actions">
+            <button type="button" className="adm-btn-ghost" onClick={onClose}>Cancelar</button>
+            <button type="submit" className="adm-btn-danger" disabled={deleting}>
+              {deleting ? <><span className="adm-btn-spinner" /> Eliminando...</> : "Eliminar"}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── ADMIN DASHBOARD ───────────────────────────────────────────────────────
 export default function AdminDashboard() {
+  const [theme, setTheme] = useState(() => localStorage.getItem("adm-theme") || "dark");
+  useEffect(() => {
+    localStorage.setItem("adm-theme", theme);
+  }, [theme]);
+
   const [authState, setAuthState] = useState("checking"); // checking | locked | unlocked
   const [pinInput, setPinInput] = useState("");
   const [pinError, setPinError] = useState(false);
@@ -1260,7 +1750,110 @@ export default function AdminDashboard() {
   const [orders, setOrders] = useState([]);
   const [menuData, setMenuData] = useState({});
   const [locations, setLocations] = useState([]);
+  const [categories, setCategories] = useState([]);
   const [showChangePassword, setShowChangePassword] = useState(false);
+  const [showChangeDeletePin, setShowChangeDeletePin] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
+  const [logoError, setLogoError] = useState(false);
+  const [deletingOrder, setDeletingOrder] = useState(null);
+  const [printingOrder, setPrintingOrder] = useState(null);
+  const [newOrderAlert, setNewOrderAlert] = useState(null);
+  const [highlightOrderId, setHighlightOrderId] = useState(null);
+  const knownOrderIdsRef = useRef(null);
+  const alertIntervalRef = useRef(null);
+  const audioCtxRef = useRef(null);
+
+  // Crear/retomar el AudioContext fuera de un gesto real del usuario (ej. desde
+  // el setInterval que revisa pedidos nuevos) hace que varios navegadores lo
+  // dejen "suspended" para siempre y el pitido nunca suene, aunque sí llegue
+  // la notificación del sistema. Por eso esto se llama también desde un
+  // listener de "primer clic" más abajo, no solo desde playPagerBeep.
+  const ensureAudioContext = useCallback(() => {
+    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+    if (!AudioCtx) return null;
+    if (!audioCtxRef.current) audioCtxRef.current = new AudioCtx();
+    if (audioCtxRef.current.state === "suspended") audioCtxRef.current.resume();
+    return audioCtxRef.current;
+  }, []);
+
+  // Beep tipo localizador (3 pitidos cortos) generado con Web Audio API, sin
+  // depender de ningún archivo de audio externo.
+  const playPagerBeep = useCallback(() => {
+    const ctx = ensureAudioContext();
+    if (!ctx) return;
+    const now = ctx.currentTime;
+    [0, 0.22, 0.44].forEach((offset) => {
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = "square";
+      osc.frequency.value = 1300;
+      gain.gain.setValueAtTime(0.35, now + offset);
+      gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.18);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start(now + offset);
+      osc.stop(now + offset + 0.2);
+    });
+  }, [ensureAudioContext]);
+
+  const stopAlertSound = useCallback(() => {
+    if (alertIntervalRef.current) {
+      clearInterval(alertIntervalRef.current);
+      alertIntervalRef.current = null;
+    }
+  }, []);
+
+  // Punto único para "ya vi este pedido nuevo", sin importar si el admin lo
+  // reconoce desde el banner interno o desde la notificación del navegador —
+  // ambos deben apagar el sonido y cerrar el banner de la misma forma.
+  const acknowledgeNewOrder = useCallback((orderId) => {
+    stopAlertSound();
+    setNewOrderAlert(null);
+    if (orderId) setHighlightOrderId(orderId);
+    setTab("pedidos");
+  }, [stopAlertSound]);
+
+  const dismissNewOrderAlert = () => {
+    acknowledgeNewOrder(newOrderAlert?.orders?.[0]?.id);
+  };
+
+  useEffect(() => stopAlertSound, [stopAlertSound]);
+
+  // Notificaciones del navegador (aparecen aunque la pestaña no esté activa).
+  // "unsupported" cubre navegadores sin Notification API (ej. Safari en iPhone).
+  const [notifPermission, setNotifPermission] = useState(
+    typeof Notification !== "undefined" ? Notification.permission : "unsupported"
+  );
+
+  const requestNotificationPermission = () => {
+    if (typeof Notification === "undefined") return;
+    Notification.requestPermission().then(setNotifPermission);
+  };
+
+  const notifyNewOrder = useCallback((order) => {
+    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+    const notification = new Notification("🔔 Nuevo pedido — Cómo Sería", {
+      body: `${order.customerName} · ${fmt(order.total)}`,
+      icon: "/logo.png",
+      tag: `order-${order.id}`,
+    });
+    notification.onclick = () => {
+      window.focus();
+      acknowledgeNewOrder(order.id);
+      notification.close();
+    };
+  }, [acknowledgeNewOrder]);
+
+  useEffect(() => {
+    if (!printingOrder) return;
+    const afterPrint = () => setPrintingOrder(null);
+    window.addEventListener("afterprint", afterPrint);
+    const t = setTimeout(() => window.print(), 50);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("afterprint", afterPrint);
+    };
+  }, [printingOrder]);
   const [exportingOrdersPdf, setExportingOrdersPdf] = useState(false);
   const [exportingSummaryPdf, setExportingSummaryPdf] = useState(false);
   const [rangePreset, setRangePreset] = useState("hoy");
@@ -1288,9 +1881,39 @@ export default function AdminDashboard() {
       .catch(() => setAuthState("locked"));
   }, []);
 
+  // La mayoría de las veces la sesión ya está iniciada (cookie persistida), así
+  // que nunca se pasa por el formulario de PIN — hay que aprovechar el primer
+  // clic real dentro del panel para "despertar" el audio, o el pitido de
+  // pedido nuevo puede quedar mudo en algunos navegadores aunque la
+  // notificación del sistema sí llegue.
+  useEffect(() => {
+    if (authState !== "unlocked") return;
+    const warmUpAudio = () => ensureAudioContext();
+    document.addEventListener("pointerdown", warmUpAudio, { once: true });
+    return () => document.removeEventListener("pointerdown", warmUpAudio);
+  }, [authState, ensureAudioContext]);
+
   const loadOrders = useCallback(() => {
-    api("/api/orders").then((d) => setOrders((d.orders || []).map(mapOrderRow))).catch(() => {});
-  }, []);
+    api("/api/orders").then((d) => {
+      const mapped = (d.orders || []).map(mapOrderRow);
+      setOrders(mapped);
+
+      // Solo alertar por pedidos nuevos a partir de la segunda carga en adelante;
+      // en la primera carga (login) no hay que hacer sonar nada.
+      if (knownOrderIdsRef.current) {
+        const fresh = mapped.filter((o) => !knownOrderIdsRef.current.has(o.id));
+        if (fresh.length > 0) {
+          setNewOrderAlert((prev) => ({ orders: [...fresh, ...(prev?.orders || [])] }));
+          playPagerBeep();
+          if (!alertIntervalRef.current) {
+            alertIntervalRef.current = setInterval(playPagerBeep, 2000);
+          }
+          fresh.forEach(notifyNewOrder);
+        }
+      }
+      knownOrderIdsRef.current = new Set(mapped.map((o) => o.id));
+    }).catch(() => {});
+  }, [playPagerBeep, notifyNewOrder]);
 
   const loadMenu = useCallback(() => {
     api("/api/menu?all=1").then(setMenuData).catch(() => {});
@@ -1300,17 +1923,23 @@ export default function AdminDashboard() {
     api("/api/delivery-locations?all=1").then((d) => setLocations(d.locations || [])).catch(() => {});
   }, []);
 
+  const loadCategories = useCallback(() => {
+    api("/api/categories?all=1").then((d) => setCategories(d.categories || [])).catch(() => {});
+  }, []);
+
   useEffect(() => {
     if (authState !== "unlocked") return;
     loadOrders();
     loadMenu();
     loadLocations();
-    const interval = setInterval(loadOrders, 30000);
+    loadCategories();
+    const interval = setInterval(loadOrders, 7000);
     return () => clearInterval(interval);
-  }, [authState, loadOrders, loadMenu, loadLocations]);
+  }, [authState, loadOrders, loadMenu, loadLocations, loadCategories]);
 
   const handlePin = async (e) => {
     e.preventDefault();
+    ensureAudioContext();
     try {
       await api("/api/admin/login", { method: "POST", body: JSON.stringify({ password: pinInput }) });
       setAuthState("unlocked");
@@ -1322,6 +1951,11 @@ export default function AdminDashboard() {
   };
 
   const handleLogout = async () => {
+    // Si había una alerta de pedido nuevo sonando, que no se quede pitando
+    // detrás de la pantalla de PIN (el componente nunca se desmonta, solo
+    // cambia de pantalla).
+    stopAlertSound();
+    setNewOrderAlert(null);
     await api("/api/admin/logout", { method: "POST" }).catch(() => {});
     setAuthState("locked");
   };
@@ -1329,11 +1963,29 @@ export default function AdminDashboard() {
   // ── PIN SCREEN ──
   if (authState !== "unlocked") {
     return (
-      <div className="adm-pin-screen">
+      <div className="adm-pin-screen" data-theme={theme}>
+        <button
+          className="adm-pin-theme-toggle"
+          onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+          title={theme === "dark" ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}
+        >
+          {theme === "dark" ? <IconSun /> : <IconMoon />}
+        </button>
         <div className="adm-pin-card">
-          <div className="adm-pin-logo">CS</div>
+          <div className="adm-pin-logo">
+            {!logoError ? (
+              <img
+                src={logoImg}
+                alt="Cómo Sería"
+                onError={() => setLogoError(true)}
+                style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }}
+              />
+            ) : (
+              <span>CS</span>
+            )}
+          </div>
           <h2 className="adm-pin-title">Panel de Administración</h2>
-          <p className="adm-pin-sub">Como Seria — Acceso restringido</p>
+          <p className="adm-pin-sub">Cómo Sería — Acceso restringido</p>
           {authState === "checking" ? (
             <p className="adm-pin-sub">Verificando sesión...</p>
           ) : (
@@ -1417,19 +2069,73 @@ export default function AdminDashboard() {
 
   // ── DASHBOARD ──
   return (
-    <div className="adm-root">
+    <div className="adm-root" data-theme={theme}>
+      {printingOrder && <ComandaTemplate order={printingOrder} />}
+      {newOrderAlert && (
+        <div className="adm-new-order-banner" onClick={dismissNewOrderAlert}>
+          <span className="adm-new-order-icon">🔔</span>
+          <span className="adm-new-order-text">
+            {newOrderAlert.orders.length === 1
+              ? `¡Nuevo pedido de ${newOrderAlert.orders[0].customerName}!`
+              : `¡${newOrderAlert.orders.length} pedidos nuevos!`}
+          </span>
+          <button className="adm-new-order-dismiss">
+            Ver pedido{newOrderAlert.orders.length > 1 ? "s" : ""}
+          </button>
+        </div>
+      )}
       {/* Header */}
       <header className="adm-header">
         <div className="adm-header-inner">
           <div className="adm-header-brand">
-            <div className="adm-header-logo">CS</div>
+            <div className="adm-header-logo">
+              {!logoError ? (
+                <img
+                  src={logoImg}
+                  alt="Cómo Sería"
+                  onError={() => setLogoError(true)}
+                  style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "50%" }}
+                />
+              ) : (
+                <span>CS</span>
+              )}
+            </div>
             <div>
-              <div className="adm-header-title">COMO SERIA</div>
+              <div className="adm-header-title">CÓMO SERÍA</div>
               <div className="adm-header-sub">Panel de Administración</div>
             </div>
           </div>
           <div className="adm-header-actions">
-            <button className="adm-export-btn" onClick={() => setShowChangePassword(true)}>🔑 Contraseña</button>
+            <button
+              className="adm-export-btn adm-theme-toggle"
+              onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
+              title={theme === "dark" ? "Cambiar a tema claro" : "Cambiar a tema oscuro"}
+            >
+              {theme === "dark" ? <IconSun /> : <IconMoon />}
+            </button>
+            {notifPermission === "default" && (
+              <button className="adm-export-btn adm-notif-btn" onClick={requestNotificationPermission}>
+                🔔 Activar notificaciones
+              </button>
+            )}
+            <div className="adm-profile-menu-wrap">
+              <button className="adm-export-btn" onClick={() => setShowProfileMenu((v) => !v)}>
+                <IconUser /> Perfil ▾
+              </button>
+              {showProfileMenu && (
+                <>
+                  <div className="adm-dropdown-catcher" onClick={() => setShowProfileMenu(false)} />
+                  <div className="adm-profile-dropdown">
+                    <button onClick={() => { setShowChangePassword(true); setShowProfileMenu(false); }}>
+                      🔑 Cambiar contraseña admin
+                    </button>
+                    <button onClick={() => { setShowChangeDeletePin(true); setShowProfileMenu(false); }}>
+                      🗑️ Cambiar clave de eliminación
+                    </button>
+                  </div>
+                </>
+              )}
+            </div>
             <button className="adm-export-btn" onClick={handleLogout}>Cerrar sesión</button>
             <a href="/" className="adm-menu-link">Ver menú →</a>
           </div>
@@ -1437,17 +2143,30 @@ export default function AdminDashboard() {
       </header>
 
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
+      {showChangeDeletePin && <ChangeDeletePinModal onClose={() => setShowChangeDeletePin(false)} />}
+      {deletingOrder && (
+        <DeleteConfirmModal
+          title="Eliminar pedido"
+          message={`¿Eliminar el pedido de ${deletingOrder.customerName} por ${fmt(deletingOrder.total)}? Esta acción no se puede deshacer.`}
+          onClose={() => setDeletingOrder(null)}
+          onConfirm={async (pin) => {
+            await api(`/api/orders/${deletingOrder.id}`, { method: "DELETE", body: JSON.stringify({ pin }) });
+            setDeletingOrder(null);
+            loadOrders();
+          }}
+        />
+      )}
 
       <main className="adm-main">
         {/* Tabs */}
         <div className="adm-tabs">
-          {["resumen", "pedidos", "menu", "domicilios"].map((t) => (
+          {["resumen", "pedidos", "menu", "categorias", "domicilios"].map((t) => (
             <button
               key={t}
               className={`adm-tab ${tab === t ? "active" : ""}`}
               onClick={() => setTab(t)}
             >
-              {t === "resumen" ? "📊 Resumen" : t === "pedidos" ? "📋 Pedidos" : t === "menu" ? "🍔 Menú" : "🛵 Domicilios"}
+              {t === "resumen" ? "📊 Resumen" : t === "pedidos" ? "📋 Pedidos" : t === "menu" ? "🍔 Menú" : t === "categorias" ? "🗂️ Categorías" : "🛵 Domicilios"}
             </button>
           ))}
           <div className="adm-live-badge">
@@ -1601,12 +2320,19 @@ export default function AdminDashboard() {
                 Pedidos {range.from ? "en el rango" : "recientes"}
                 <span className="adm-count-badge">{filteredOrders.length} total</span>
               </div>
-              <RecentOrders orders={filteredOrders} />
+              <RecentOrders
+                orders={filteredOrders}
+                onPrint={setPrintingOrder}
+                onDelete={setDeletingOrder}
+                highlightOrderId={highlightOrderId}
+              />
             </div>
           </>
         )}
 
-        {tab === "menu" && <MenuManager menuData={menuData} reload={loadMenu} />}
+        {tab === "menu" && <MenuManager menuData={menuData} categories={categories} reload={loadMenu} />}
+
+        {tab === "categorias" && <CategoryManager categories={categories} reload={loadCategories} />}
 
         {tab === "domicilios" && <DeliveryManager locations={locations} reload={loadLocations} />}
 

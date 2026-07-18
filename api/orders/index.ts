@@ -55,7 +55,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
   if (req.method === "GET") {
     if (!requireAdmin(req, res)) return;
-    const { rows } = await query(`select * from orders order by created_at desc limit 500`);
+    const { rows } = await query(
+      `select * from orders where is_deleted = false order by created_at desc limit 500`
+    );
     return res.status(200).json({ orders: rows });
   }
 

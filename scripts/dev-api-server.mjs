@@ -46,11 +46,16 @@ const routes = [
   { pattern: /^\/api\/menu$/, file: "menu/index.ts" },
   { pattern: /^\/api\/delivery-locations\/([^/]+)$/, file: "delivery-locations/[id].ts", paramNames: ["id"] },
   { pattern: /^\/api\/delivery-locations$/, file: "delivery-locations/index.ts" },
+  { pattern: /^\/api\/categories\/([^/]+)$/, file: "categories/[id].ts", paramNames: ["id"] },
+  { pattern: /^\/api\/categories$/, file: "categories/index.ts" },
+  { pattern: /^\/api\/orders\/([^/]+)$/, file: "orders/[id].ts", paramNames: ["id"] },
   { pattern: /^\/api\/orders$/, file: "orders/index.ts" },
+  { pattern: /^\/api\/top-products$/, file: "top-products.ts" },
   { pattern: /^\/api\/admin\/login$/, file: "admin/login.ts" },
   { pattern: /^\/api\/admin\/logout$/, file: "admin/logout.ts" },
   { pattern: /^\/api\/admin\/me$/, file: "admin/me.ts" },
   { pattern: /^\/api\/admin\/change-password$/, file: "admin/change-password.ts" },
+  { pattern: /^\/api\/admin\/change-delete-pin$/, file: "admin/change-delete-pin.ts" },
 ];
 
 function readBody(req) {

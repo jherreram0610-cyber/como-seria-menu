@@ -153,6 +153,35 @@ async function main() {
           : "✓ Ya existía una contraseña de admin guardada (no se tocó)"
       );
     }
+
+    const adminDeletePin = process.env.ADMIN_DELETE_PIN;
+    if (adminDeletePin) {
+      // Se revisa el estado real antes de decidir qué hacer, para no confundir
+      // "ya existía un PIN" con "la fila admin_settings ni siquiera existe todavía"
+      // (este segundo caso antes quedaba en silencio con un UPDATE que no tocaba nada).
+      const { rows: existingRows } = await client.query(
+        `select delete_pin_hash from admin_settings where id = 'singleton'`
+      );
+      if (existingRows.length === 0) {
+        console.log(
+          "✗ No se pudo sembrar el PIN de eliminación: la fila admin_settings no existe todavía " +
+          "(corre este script con ADMIN_PASSWORD configurado al menos una vez antes)"
+        );
+      } else if (existingRows[0].delete_pin_hash) {
+        console.log("✓ Ya existía un PIN de eliminación guardado (no se tocó)");
+      } else {
+        const salt = crypto.randomBytes(16).toString("hex");
+        const hash = crypto.scryptSync(adminDeletePin, salt, 64).toString("hex");
+        // Update simple (no INSERT ... ON CONFLICT): Postgres valida las columnas
+        // NOT NULL de la fila propuesta en un INSERT aunque termine en UPDATE por
+        // el conflicto, y password_hash no se está enviando aquí.
+        await client.query(
+          `update admin_settings set delete_pin_hash = $1 where id = 'singleton'`,
+          [`${salt}:${hash}`]
+        );
+        console.log("✓ PIN de eliminación inicial sembrado desde ADMIN_DELETE_PIN");
+      }
+    }
   } finally {
     await client.end();
   }
