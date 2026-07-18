@@ -813,6 +813,16 @@ body {
   50% { opacity: 0.5; transform: scale(0.8); }
 }
 
+/* ─── BOTÓN VOLVER ARRIBA ─── */
+.adm-scroll-top-btn {
+  position: fixed; bottom: 24px; right: 24px; z-index: 120;
+  width: 44px; height: 44px; border-radius: 50%; border: 1.5px solid var(--adm-border-light);
+  background: var(--adm-surface); color: var(--adm-text); box-shadow: var(--shadow-lg);
+  display: flex; align-items: center; justify-content: center; cursor: pointer;
+  transition: all 0.15s;
+}
+.adm-scroll-top-btn:hover { border-color: var(--green); background: var(--green); }
+
 /* ─── ALERTA DE PEDIDO NUEVO (banner tipo localizador) ─── */
 .adm-new-order-banner {
   position: sticky; top: 0; z-index: 200; display: flex; align-items: center;
