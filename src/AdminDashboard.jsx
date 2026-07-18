@@ -97,6 +97,7 @@ async function api(path, options) {
 }
 
 const PAYMENT_LABELS = { "qr-bold": "QR de Bold", nequi: "Nequi", transferencia: "Transferencia" };
+const KNOWN_ORDER_IDS_KEY = "cs-admin-known-order-ids";
 const RANK_MEDALS = ["🥇", "🥈", "🥉"];
 const rankBadge = (i) => RANK_MEDALS[i] || `#${i + 1}`;
 
@@ -957,16 +958,37 @@ function buildComandaHtml(order) {
 }
 
 function printComanda(order) {
-  const printWindow = window.open("", "_blank");
-  if (!printWindow) return; // bloqueado por el navegador (no debería pasar: viene de un clic real)
-  printWindow.document.open();
-  printWindow.document.write(buildComandaHtml(order));
-  printWindow.document.close();
-  printWindow.onload = () => {
-    printWindow.focus();
-    printWindow.print();
+  // Un iframe oculto dentro de la misma página es más confiable en Android
+  // que abrir una pestaña nueva (window.open) — evitar el cambio de pestaña
+  // parece ser justo lo que fallaba ahí ("se ha producido un problema al
+  // imprimir la página").
+  const iframe = document.createElement("iframe");
+  iframe.style.position = "fixed";
+  iframe.style.right = "0";
+  iframe.style.bottom = "0";
+  iframe.style.width = "0";
+  iframe.style.height = "0";
+  iframe.style.border = "0";
+
+  const cleanup = () => {
+    if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
   };
-  printWindow.onafterprint = () => printWindow.close();
+
+  iframe.onload = () => {
+    try {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+    } catch {
+      cleanup();
+      return;
+    }
+    // No todos los navegadores disparan "afterprint" de forma confiable
+    // dentro de un iframe, así que se limpia con un tiempo de espera.
+    setTimeout(cleanup, 1000);
+  };
+
+  document.body.appendChild(iframe);
+  iframe.srcdoc = buildComandaHtml(order);
 }
 
 // ─── FORMULARIO DE PRODUCTO ────────────────────────────────────────────────
@@ -1969,8 +1991,26 @@ export default function AdminDashboard() {
       const mapped = (d.orders || []).map(mapOrderRow);
       setOrders(mapped);
 
+      // En celulares, el sistema operativo suele "matar" la pestaña en segundo
+      // plano (pantalla bloqueada / cambio de app) para ahorrar memoria; al
+      // volver, el navegador la recarga por dentro sin que se note visualmente
+      // — eso borraba esta lista si solo vivía en memoria (useRef), haciendo
+      // que la misma alerta reapareciera sin parar. Por eso se guarda también
+      // en localStorage: si el ref en memoria se perdió pero el navegador
+      // sigue siendo el mismo, se recupera de ahí en vez de tratarlo como si
+      // fuera la primera vez.
+      if (!knownOrderIdsRef.current) {
+        try {
+          const raw = localStorage.getItem(KNOWN_ORDER_IDS_KEY);
+          knownOrderIdsRef.current = raw ? new Set(JSON.parse(raw)) : null;
+        } catch {
+          knownOrderIdsRef.current = null;
+        }
+      }
+
       // Solo alertar por pedidos nuevos a partir de la segunda carga en adelante;
-      // en la primera carga (login) no hay que hacer sonar nada.
+      // en la primera carga real (dispositivo nunca antes usado) no hay que
+      // hacer sonar nada.
       if (knownOrderIdsRef.current) {
         const fresh = mapped.filter((o) => !knownOrderIdsRef.current.has(o.id));
         if (fresh.length > 0) {
@@ -1995,8 +2035,20 @@ export default function AdminDashboard() {
         // momentáneamente un pedido ya visto — y al reaparecer en una
         // revisión siguiente, se volvía a tratar como nuevo sin parar.
         mapped.forEach((o) => knownOrderIdsRef.current.add(o.id));
+        // Tope simple para que el set no crezca sin límite con los meses: si
+        // ya pasó de 2000 ids, no hace falta conservar los muy viejos — nunca
+        // van a volver a aparecer en /api/orders (que ya trae como mucho 500).
+        if (knownOrderIdsRef.current.size > 2000) {
+          knownOrderIdsRef.current = new Set(mapped.map((o) => o.id));
+        }
       } else {
         knownOrderIdsRef.current = new Set(mapped.map((o) => o.id));
+      }
+
+      try {
+        localStorage.setItem(KNOWN_ORDER_IDS_KEY, JSON.stringify([...knownOrderIdsRef.current]));
+      } catch {
+        // si el almacenamiento está lleno o no disponible, no es crítico
       }
     }).catch(() => {}).finally(() => {
       loadingOrdersRef.current = false;
