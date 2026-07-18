@@ -862,61 +862,111 @@ function RecentOrders({ orders, onPrint, onDelete, highlightOrderId }) {
 }
 
 // ─── COMANDA DE IMPRESIÓN (58mm) ────────────────────────────────────────────
-function ComandaTemplate({ order }) {
-  return (
-    <div className="comanda-print">
-      <div className="comanda-banner">APP DOMICILIOS</div>
-      <div className="comanda-center comanda-title">CÓMO SERÍA</div>
-      <div className="comanda-center">COMANDA</div>
-      <div className="comanda-line" />
-      <div>Cliente: {order.customerName}</div>
-      <div>{order.date} · {order.time}</div>
-      <div className="comanda-line" />
-      {order.products.map((item, i) => (
-        <div key={i} className="comanda-item">
-          <div className="comanda-item-top">
-            <span>{item.qty} x {item.name}</span>
-            <span>{fmt((item.totalPrice ?? 0) * (item.qty || 1))}</span>
-          </div>
-          {item.removedIngredients?.length > 0 && <div>Sin: {item.removedIngredients.join(", ")}</div>}
-          {item.bebida && <div>Bebida: {item.bebida.name}</div>}
-          {item.side && <div>{item.side.name}</div>}
-          {item.adiciones?.length > 0 && item.adiciones.map((a) => (
-            <div key={a.id}>+ {formatAdicion(a, item.qty)}</div>
-          ))}
-          {item.agrandarPapas && <div>Papas grandes</div>}
-          {item.comment && <div>Nota: {item.comment}</div>}
-        </div>
-      ))}
-      <div className="comanda-line" />
-      <div>
-        {order.deliveryType === "domicilio"
-          ? `Domicilio: ${order.deliveryLocation || ""}`
-          : "Para recoger en tienda"}
-      </div>
-      {order.deliveryType === "domicilio" && order.deliveryAddress && (
-        <div className="comanda-address">
-          <div className="comanda-address-label">DIRECCIÓN</div>
-          {order.deliveryAddress}
-        </div>
-      )}
-      {order.paymentMethod && <div>Pago: {PAYMENT_LABELS[order.paymentMethod] || order.paymentMethod}</div>}
-      <div className="comanda-line" />
-      <div className="comanda-item-top">
-        <span>Subtotal</span><span>{fmt(order.subtotal)}</span>
-      </div>
-      {order.deliveryFee > 0 && (
-        <div className="comanda-item-top">
-          <span>Domicilio</span><span>{fmt(order.deliveryFee)}</span>
-        </div>
-      )}
-      <div className="comanda-item-top comanda-total">
-        <span>TOTAL</span><span>{fmt(order.total)}</span>
-      </div>
-      <div className="comanda-line" />
-      <div className="comanda-center">¡Gracias por tu pedido!</div>
-    </div>
-  );
+// Se imprime abriendo una pestaña/ventana aparte que SOLO contiene la comanda,
+// en vez de "ocultar todo lo demás" con CSS sobre la misma página — ese truco
+// (position/visibility) resultó poco confiable en el motor de impresión de
+// Chrome para Android (salía en blanco), así que esto evita el problema de raíz.
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function buildComandaHtml(order) {
+  const itemsHtml = order.products.map((item) => {
+    const lines = [
+      `<div class="comanda-item-top"><span>${item.qty} x ${escapeHtml(item.name)}</span><span>${fmt((item.totalPrice ?? 0) * (item.qty || 1))}</span></div>`,
+    ];
+    if (item.removedIngredients?.length > 0) lines.push(`<div>Sin: ${escapeHtml(item.removedIngredients.join(", "))}</div>`);
+    if (item.bebida) lines.push(`<div>Bebida: ${escapeHtml(item.bebida.name)}</div>`);
+    if (item.side) lines.push(`<div>${escapeHtml(item.side.name)}</div>`);
+    if (item.adiciones?.length > 0) {
+      item.adiciones.forEach((a) => lines.push(`<div>+ ${escapeHtml(formatAdicion(a, item.qty))}</div>`));
+    }
+    if (item.agrandarPapas) lines.push(`<div>Papas grandes</div>`);
+    if (item.comment) lines.push(`<div>Nota: ${escapeHtml(item.comment)}</div>`);
+    return `<div class="comanda-item">${lines.join("")}</div>`;
+  }).join("");
+
+  const addressHtml = order.deliveryType === "domicilio" && order.deliveryAddress
+    ? `<div class="comanda-address"><div class="comanda-address-label">DIRECCIÓN</div>${escapeHtml(order.deliveryAddress)}</div>`
+    : "";
+  const deliveryFeeHtml = order.deliveryFee > 0
+    ? `<div class="comanda-item-top"><span>Domicilio</span><span>${fmt(order.deliveryFee)}</span></div>`
+    : "";
+  const paymentHtml = order.paymentMethod
+    ? `<div>Pago: ${escapeHtml(PAYMENT_LABELS[order.paymentMethod] || order.paymentMethod)}</div>`
+    : "";
+  const deliveryLineHtml = order.deliveryType === "domicilio"
+    ? `Domicilio: ${escapeHtml(order.deliveryLocation || "")}`
+    : "Para recoger en tienda";
+
+  return `<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Comanda</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 58mm; font-family: 'Courier New', monospace; font-size: 11px;
+    color: #000; background: #fff; line-height: 1.4;
+  }
+  .comanda-center { text-align: center; }
+  .comanda-banner {
+    text-align: center; font-size: 14px; font-weight: 700; letter-spacing: 1px;
+    border-top: 3px double #000; border-bottom: 3px double #000;
+    padding: 4px 0; margin-bottom: 6px;
+  }
+  .comanda-title { font-size: 15px; font-weight: 700; }
+  .comanda-line { border-top: 1px dashed #000; margin: 6px 0; }
+  .comanda-item { margin-bottom: 4px; }
+  .comanda-item-top { display: flex; justify-content: space-between; gap: 8px; font-weight: 700; }
+  .comanda-total { font-size: 13px; }
+  .comanda-address {
+    font-weight: 700; font-size: 13px; border: 1.5px solid #000; border-radius: 3px;
+    padding: 5px 6px; margin: 5px 0; line-height: 1.3;
+  }
+  .comanda-address-label { font-size: 9px; letter-spacing: 0.5px; margin-bottom: 2px; }
+  @page { size: 58mm auto; margin: 2mm; }
+</style>
+</head>
+<body>
+  <div class="comanda-banner">APP DOMICILIOS</div>
+  <div class="comanda-center comanda-title">CÓMO SERÍA</div>
+  <div class="comanda-center">COMANDA</div>
+  <div class="comanda-line"></div>
+  <div>Cliente: ${escapeHtml(order.customerName)}</div>
+  <div>${escapeHtml(order.date)} · ${escapeHtml(order.time)}</div>
+  <div class="comanda-line"></div>
+  ${itemsHtml}
+  <div class="comanda-line"></div>
+  <div>${deliveryLineHtml}</div>
+  ${addressHtml}
+  ${paymentHtml}
+  <div class="comanda-line"></div>
+  <div class="comanda-item-top"><span>Subtotal</span><span>${fmt(order.subtotal)}</span></div>
+  ${deliveryFeeHtml}
+  <div class="comanda-item-top comanda-total"><span>TOTAL</span><span>${fmt(order.total)}</span></div>
+  <div class="comanda-line"></div>
+  <div class="comanda-center">¡Gracias por tu pedido!</div>
+</body>
+</html>`;
+}
+
+function printComanda(order) {
+  const printWindow = window.open("", "_blank");
+  if (!printWindow) return; // bloqueado por el navegador (no debería pasar: viene de un clic real)
+  printWindow.document.open();
+  printWindow.document.write(buildComandaHtml(order));
+  printWindow.document.close();
+  printWindow.onload = () => {
+    printWindow.focus();
+    printWindow.print();
+  };
+  printWindow.onafterprint = () => printWindow.close();
 }
 
 // ─── FORMULARIO DE PRODUCTO ────────────────────────────────────────────────
@@ -1780,7 +1830,6 @@ export default function AdminDashboard() {
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [logoError, setLogoError] = useState(false);
   const [deletingOrder, setDeletingOrder] = useState(null);
-  const [printingOrder, setPrintingOrder] = useState(null);
   const [newOrderAlert, setNewOrderAlert] = useState(null);
   const [highlightOrderId, setHighlightOrderId] = useState(null);
   const knownOrderIdsRef = useRef(null);
@@ -1869,16 +1918,6 @@ export default function AdminDashboard() {
     };
   }, [acknowledgeNewOrder]);
 
-  useEffect(() => {
-    if (!printingOrder) return;
-    const afterPrint = () => setPrintingOrder(null);
-    window.addEventListener("afterprint", afterPrint);
-    const t = setTimeout(() => window.print(), 50);
-    return () => {
-      clearTimeout(t);
-      window.removeEventListener("afterprint", afterPrint);
-    };
-  }, [printingOrder]);
   const [exportingOrdersPdf, setExportingOrdersPdf] = useState(false);
   const [exportingSummaryPdf, setExportingSummaryPdf] = useState(false);
   const [rangePreset, setRangePreset] = useState("hoy");
@@ -2119,7 +2158,6 @@ export default function AdminDashboard() {
   // ── DASHBOARD ──
   return (
     <div className="adm-root" data-theme={theme}>
-      {printingOrder && <ComandaTemplate order={printingOrder} />}
       {showScrollTop && (
         <button className="adm-scroll-top-btn" onClick={scrollToTop} title="Volver arriba">
           <IconArrowUp />
@@ -2378,7 +2416,7 @@ export default function AdminDashboard() {
               </div>
               <RecentOrders
                 orders={filteredOrders}
-                onPrint={setPrintingOrder}
+                onPrint={printComanda}
                 onDelete={setDeletingOrder}
                 highlightOrderId={highlightOrderId}
               />
