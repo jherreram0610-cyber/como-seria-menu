@@ -1935,15 +1935,30 @@ export default function AdminDashboard() {
       if (knownOrderIdsRef.current) {
         const fresh = mapped.filter((o) => !knownOrderIdsRef.current.has(o.id));
         if (fresh.length > 0) {
-          setNewOrderAlert((prev) => ({ orders: [...fresh, ...(prev?.orders || [])] }));
+          // Deduplicar por id al acumular: si por lo que sea el mismo pedido
+          // se llegara a detectar como "nuevo" más de una vez, que nunca se
+          // cuente dos veces en el banner.
+          setNewOrderAlert((prev) => {
+            const prevOrders = prev?.orders || [];
+            const seenIds = new Set(prevOrders.map((o) => o.id));
+            const newOnes = fresh.filter((o) => !seenIds.has(o.id));
+            return { orders: [...newOnes, ...prevOrders] };
+          });
           playPagerBeep();
           if (!alertIntervalRef.current) {
             alertIntervalRef.current = setInterval(playPagerBeep, 2000);
           }
           fresh.forEach(notifyNewOrder);
         }
+        // Se AGREGA a los ids ya conocidos, nunca se reemplaza el set completo:
+        // en conexiones inestables (móviles/tablets) una revisión puntual
+        // podía llegar incompleta o fallar parcialmente, "olvidando"
+        // momentáneamente un pedido ya visto — y al reaparecer en una
+        // revisión siguiente, se volvía a tratar como nuevo sin parar.
+        mapped.forEach((o) => knownOrderIdsRef.current.add(o.id));
+      } else {
+        knownOrderIdsRef.current = new Set(mapped.map((o) => o.id));
       }
-      knownOrderIdsRef.current = new Set(mapped.map((o) => o.id));
     }).catch(() => {}).finally(() => {
       loadingOrdersRef.current = false;
     });

@@ -1315,8 +1315,12 @@ body {
 }
 
 /* ─── COMANDA DE IMPRESIÓN (58mm) ───────────────────────────────────────── */
+/* display:none (en vez del truco viejo de position:fixed + left:-9999px) es
+   más confiable en motores de impresión de navegadores móviles — en Android
+   el truco de posición dejaba la comanda fuera del área imprimible y salía
+   en blanco (2 páginas vacías) aunque en escritorio sí funcionaba. */
 .comanda-print {
-  position: fixed; left: -9999px; top: 0; width: 58mm;
+  display: none; width: 58mm;
   font-family: 'Courier New', 'DM Sans', monospace; font-size: 11px; color: #000; background: #fff;
   line-height: 1.4;
 }
@@ -1338,8 +1342,7 @@ body {
 .comanda-address-label { font-size: 9px; letter-spacing: 0.5px; margin-bottom: 2px; }
 
 @media print {
-  body * { visibility: hidden; }
-  .comanda-print, .comanda-print * { visibility: visible; }
-  .comanda-print { position: absolute; left: 0; top: 0; }
+  body * { display: none !important; }
+  .comanda-print, .comanda-print * { display: revert !important; }
   @page { size: 58mm auto; margin: 2mm; }
 }
