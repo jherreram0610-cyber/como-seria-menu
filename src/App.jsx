@@ -29,21 +29,25 @@ const SIDES = [
   { id: "s3", name: "Aros de Cebolla", price: 1000 },
 ];
 
-const CATEGORY_META = {
-  hamburguesas: { icon: "🍔", label: "Hamburguesas" },
-  tenders: { icon: "🍗", label: "Chicken Tenders" },
-  combos: { icon: "🔥", label: "Combos" },
-  adiciones: { icon: "➕", label: "Adiciones" },
-  bebidas: { icon: "🥤", label: "Bebidas" },
-};
-
 const PAYMENT_METHODS = [
   { id: "qr-bold", label: "QR de Bold" },
   { id: "nequi", label: "Nequi" },
   { id: "transferencia", label: "Transferencia" },
 ];
 
+const PAYMENT_ACCOUNTS = {
+  nequi: [{ label: "Nequi", value: "3243517902" }],
+  transferencia: [
+    { label: "Llave Bre-B", value: "3243517902" },
+    { label: "Ahorros Bancolombia", value: "74567092902" },
+  ],
+};
+
 const fmt = (n) => "$" + n.toLocaleString("es-CO");
+const formatAdicion = (a, itemQty = 1) => {
+  const total = a.qty * itemQty;
+  return total > 1 ? `${a.name} x${total}` : a.name;
+};
 
 // ─── ICONS ────────────────────────────────────────────────────────────────────
 const IconCart = () => (
@@ -80,13 +84,21 @@ export default function ComoSeriaMenu() {
   const nameInputRef = useRef(null);
 
   const [MENU, setMENU] = useState(EMPTY_MENU);
+  // groupByCategory (backend) solo incluye categorías con al menos un producto
+  // activo, así que "bebidas"/"adiciones" pueden faltar por completo si esa
+  // categoría se queda vacía o se desactiva — nunca asumir que existen.
+  const menuBebidas = MENU.bebidas || [];
+  const menuAdiciones = MENU.adiciones || [];
   const [menuLoading, setMenuLoading] = useState(true);
   const [menuError, setMenuError] = useState(false);
   const [DELIVERY_LOCATIONS, setDeliveryLocations] = useState([]);
+  const [topProducts, setTopProducts] = useState({});
+  const [categories, setCategories] = useState([]);
 
-  // Carga el menú y las zonas de domicilio. En la carga inicial muestra el
-  // spinner/error de pantalla completa; en las actualizaciones de fondo (poll)
-  // solo refresca los datos en silencio, sin interrumpir al cliente.
+  // Carga el menú, las zonas de domicilio, las categorías y el ranking semanal
+  // de más pedidos. En la carga inicial muestra el spinner/error de pantalla
+  // completa; en las actualizaciones de fondo (poll) solo refresca los datos
+  // en silencio, sin interrumpir al cliente.
   const loadMenuData = useCallback((isInitial) => {
     return Promise.all([
       fetch("/api/menu").then((r) => {
@@ -97,10 +109,17 @@ export default function ComoSeriaMenu() {
         if (!r.ok) throw new Error("No se pudo cargar las zonas de domicilio");
         return r.json();
       }),
+      fetch("/api/categories").then((r) => {
+        if (!r.ok) throw new Error("No se pudo cargar las categorías");
+        return r.json();
+      }),
+      fetch("/api/top-products").then((r) => (r.ok ? r.json() : { top: [] })).catch(() => ({ top: [] })),
     ])
-      .then(([menuData, deliveryData]) => {
+      .then(([menuData, deliveryData, categoryData, topData]) => {
         setMENU(menuData);
         setDeliveryLocations(deliveryData.locations || []);
+        setCategories(categoryData.categories || []);
+        setTopProducts(Object.fromEntries((topData.top || []).map((t) => [t.id, t.rank])));
         if (isInitial) setMenuLoading(false);
       })
       .catch(() => {
@@ -192,6 +211,15 @@ export default function ComoSeriaMenu() {
     setTimeout(() => setToast(null), 2200);
   }, []);
 
+  const copyToClipboard = useCallback(async (text) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      showToast("Copiado ✓");
+    } catch {
+      showToast("No se pudo copiar");
+    }
+  }, [showToast]);
+
   const cartCount = cart.reduce((sum, i) => sum + i.qty, 0);
   const cartTotal = cart.reduce((sum, i) => sum + i.totalPrice * i.qty, 0);
 
@@ -201,7 +229,7 @@ export default function ComoSeriaMenu() {
     setModalQty(1);
     setRemovedIngredients([]);
     setSelectedAdiciones([]);
-    setSelectedBebida(category === "combos" ? MENU.bebidas[0] : null);
+    setSelectedBebida(category === "combos" ? menuBebidas[0] : null);
     setSelectedSide(category === "combos" ? SIDES.find(s => s.id === "s1") : null);
     setComment("");
     setAgrandarPapas(false);
@@ -214,7 +242,7 @@ export default function ComoSeriaMenu() {
     setModalQty(cartItem.qty);
     setRemovedIngredients(cartItem.removedIngredients || []);
     setSelectedAdiciones(cartItem.adiciones || []);
-    setSelectedBebida(cartItem.bebida || (cartItem.category === "combos" ? MENU.bebidas[0] : null));
+    setSelectedBebida(cartItem.bebida || (cartItem.category === "combos" ? menuBebidas[0] : null));
     setSelectedSide(cartItem.side || (cartItem.category === "combos" ? SIDES.find(s => s.id === "s1") : null));
     setComment(cartItem.comment || "");
     setAgrandarPapas(cartItem.agrandarPapas || false);
@@ -233,17 +261,19 @@ export default function ComoSeriaMenu() {
     );
   };
 
-  const toggleAdicion = (ad) => {
-    setSelectedAdiciones((prev) =>
-      prev.find((a) => a.id === ad.id)
-        ? prev.filter((a) => a.id !== ad.id)
-        : [...prev, ad]
-    );
+  const adjustAdicion = (ad, delta) => {
+    setSelectedAdiciones((prev) => {
+      const existing = prev.find((a) => a.id === ad.id);
+      if (!existing) return delta > 0 ? [...prev, { ...ad, qty: 1 }] : prev;
+      const qty = existing.qty + delta;
+      if (qty <= 0) return prev.filter((a) => a.id !== ad.id);
+      return prev.map((a) => (a.id === ad.id ? { ...a, qty } : a));
+    });
   };
 
   const addToCart = () => {
     if (!modalItem || editingCartId) return;
-    const adicionesTotal = selectedAdiciones.reduce((s, a) => s + a.price, 0);
+    const adicionesTotal = selectedAdiciones.reduce((s, a) => s + a.price * a.qty, 0);
     const upsize = agrandarPapas ? 2000 : 0;
     const sidePrice = selectedSide?.price || 0;
     const bebidaExtra = modalItem.category === "combos" ? (selectedBebida?.comboExtra || 0) : 0;
@@ -270,7 +300,7 @@ export default function ComoSeriaMenu() {
 
   const saveCartChanges = () => {
     if (!modalItem || !editingCartId) return;
-    const adicionesTotal = selectedAdiciones.reduce((s, a) => s + a.price, 0);
+    const adicionesTotal = selectedAdiciones.reduce((s, a) => s + a.price * a.qty, 0);
     const upsize = agrandarPapas ? 2000 : 0;
     const sidePrice = selectedSide?.price || 0;
     const bebidaExtra = modalItem.category === "combos" ? (selectedBebida?.comboExtra || 0) : 0;
@@ -343,7 +373,7 @@ export default function ComoSeriaMenu() {
         msg += `   🍟 ${item.side.name}${item.side.price > 0 ? ` (+$${fmt(item.side.price)})` : ''}\n`;
       }
       if (item.adiciones.length > 0) {
-        msg += `   ➕ Con: ${item.adiciones.map((a) => a.name).join(", ")}\n`;
+        msg += `   ➕ Con: ${item.adiciones.map((a) => formatAdicion(a, item.qty)).join(", ")}\n`;
       }
       if (item.agrandarPapas) {
         msg += `   🍟 Papas Grandes (+$2.000)\n`;
@@ -365,7 +395,12 @@ export default function ComoSeriaMenu() {
     }
     if (paymentMethod) {
       const paymentLabel = PAYMENT_METHODS.find((m) => m.id === paymentMethod)?.label || paymentMethod;
-      msg += `💳 Método de pago: ${paymentLabel}\n\n`;
+      msg += `💳 Método de pago: ${paymentLabel}\n`;
+      const accounts = PAYMENT_ACCOUNTS[paymentMethod] || [];
+      accounts.forEach((acc) => {
+        msg += accounts.length > 1 ? `   ${acc.label}: ${acc.value}\n` : `   ${acc.value}\n`;
+      });
+      msg += "\n";
     }
     if (deliveryType === "recoger") {
       msg += "📍 Tipo: Para Recoger en Country Mall, Jamundí\n";
@@ -491,16 +526,18 @@ export default function ComoSeriaMenu() {
         {/* CATEGORY NAV */}
         <div className="cat-nav-wrap">
           <nav className="cat-nav" ref={navRef}>
-            {Object.entries(CATEGORY_META).map(([key, val]) => (
-              <button
-                key={key}
-                id={`cat-${key}`}
-                className={`cat-pill ${activeCategory === key ? "active" : ""}`}
-                onClick={() => scrollToSection(key)}
-              >
-                <span className="cat-emoji">{val.icon}</span> {val.label}
-              </button>
-            ))}
+            {categories
+              .filter((cat) => (MENU[cat.id]?.length || 0) > 0)
+              .map((cat) => (
+                <button
+                  key={cat.id}
+                  id={`cat-${cat.id}`}
+                  className={`cat-pill ${activeCategory === cat.id ? "active" : ""}`}
+                  onClick={() => scrollToSection(cat.id)}
+                >
+                  <span className="cat-emoji">{cat.icon}</span> {cat.label}
+                </button>
+              ))}
           </nav>
           {/* Flecha izquierda */}
           {showLeftArrow && (
@@ -570,14 +607,17 @@ export default function ComoSeriaMenu() {
         </div>
 
         {/* SECTIONS */}
-        {Object.entries(MENU).map(([catKey, items]) => (
+        {Object.entries(MENU).map(([catKey, items]) => {
+          const catMeta = categories.find((c) => c.id === catKey);
+          if (!catMeta) return null;
+          return (
           <section
             key={catKey}
             className="section"
             ref={(el) => (sectionRefs.current[catKey] = el)}
           >
             <h2 className="section-title">
-              {CATEGORY_META[catKey].icon} {CATEGORY_META[catKey].label}
+              {catMeta.icon} {catMeta.label}
               <span className="sec-line" />
             </h2>
 
@@ -610,6 +650,9 @@ export default function ComoSeriaMenu() {
                     <div className="product-info">
                       <div className="product-name">
                         {item.name}
+                        {topProducts[item.id] && (
+                          <span className="top-tag">🏆 Top {topProducts[item.id]} de la semana</span>
+                        )}
                         {item.popular && (
                           <span className="popular-tag"><IconStar /> Popular</span>
                         )}
@@ -656,7 +699,8 @@ export default function ComoSeriaMenu() {
               );
             })}
           </section>
-        ))}
+          );
+        })}
 
         {/* FOOTER */}
         <footer className="footer">
@@ -740,17 +784,41 @@ export default function ComoSeriaMenu() {
                   <div className="modal-section-title">
                     ➕ Adiciones <span className="optional">(opcional)</span>
                   </div>
-                  {MENU.adiciones.map((ad) => (
-                    <div key={ad.id} className="adicion-row" onClick={() => toggleAdicion(ad)}>
-                      <div className="adicion-left">
-                        <div className={`adicion-check ${selectedAdiciones.find((a) => a.id === ad.id) ? "checked" : ""}`}>
-                          {selectedAdiciones.find((a) => a.id === ad.id) && <IconCheck />}
+                  {menuAdiciones.map((ad) => {
+                    const selected = selectedAdiciones.find((a) => a.id === ad.id);
+                    return (
+                      <div key={ad.id} className="adicion-row" onClick={() => !selected && adjustAdicion(ad, 1)}>
+                        <div className="adicion-left">
+                          <div
+                            className={`adicion-check ${selected ? "checked" : ""}`}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (selected) {
+                                setSelectedAdiciones((prev) => prev.filter((a) => a.id !== ad.id));
+                              } else {
+                                adjustAdicion(ad, 1);
+                              }
+                            }}
+                          >
+                            {selected && <IconCheck />}
+                          </div>
+                          <span className="adicion-name">{ad.name}</span>
                         </div>
-                        <span className="adicion-name">{ad.name}</span>
+                        {selected ? (
+                          <div className="adicion-right">
+                            <div className="adicion-qty-stepper" onClick={(e) => e.stopPropagation()}>
+                              <button className="adicion-qty-btn" onClick={() => adjustAdicion(ad, -1)}><IconMinus /></button>
+                              <span className="adicion-qty-num">{selected.qty}</span>
+                              <button className="adicion-qty-btn" onClick={() => adjustAdicion(ad, 1)}><IconPlus /></button>
+                            </div>
+                            <span className="adicion-price">+{fmt(ad.price * selected.qty)}</span>
+                          </div>
+                        ) : (
+                          <span className="adicion-price">+{fmt(ad.price)}</span>
+                        )}
                       </div>
-                      <span className="adicion-price">+{fmt(ad.price)}</span>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
 
@@ -760,7 +828,7 @@ export default function ComoSeriaMenu() {
                   <div className="modal-section-title">
                     🥤 Bebida incluida <span className="optional">(elige una)</span>
                   </div>
-                  {MENU.bebidas.map((bebida) => (
+                  {menuBebidas.map((bebida) => (
                     <div
                       key={bebida.id}
                       className={`adicion-row ${selectedBebida?.id === bebida.id ? "selected" : ""}`}
@@ -849,7 +917,7 @@ export default function ComoSeriaMenu() {
                 id="btn-add-to-cart"
                 onClick={editingCartId ? saveCartChanges : addToCart}
               >
-                {editingCartId ? "Guardar cambios" : "Agregar"} {fmt((modalItem.price + selectedAdiciones.reduce((s, a) => s + a.price, 0) + (selectedSide?.price || 0) + (agrandarPapas && modalItem.category === "combos" ? 2000 : 0) + (modalItem.category === "combos" ? (selectedBebida?.comboExtra || 0) : 0)) * modalQty)}
+                {editingCartId ? "Guardar cambios" : "Agregar"} {fmt((modalItem.price + selectedAdiciones.reduce((s, a) => s + a.price * a.qty, 0) + (selectedSide?.price || 0) + (agrandarPapas && modalItem.category === "combos" ? 2000 : 0) + (modalItem.category === "combos" ? (selectedBebida?.comboExtra || 0) : 0)) * modalQty)}
               </button>
             </div>
           </div>
@@ -916,7 +984,7 @@ export default function ComoSeriaMenu() {
                             <div className="added-ing">🍟 {item.side.name}{item.side.price > 0 ? ` (+$${fmt(item.side.price)})` : ''}</div>
                           )}
                           {item.adiciones.length > 0 && (
-                            <div className="added-ing">➕ {item.adiciones.map((a) => a.name).join(", ")}</div>
+                            <div className="added-ing">➕ {item.adiciones.map((a) => formatAdicion(a, item.qty)).join(", ")}</div>
                           )}
                           {item.agrandarPapas && (
                             <div className="added-ing">🍟 Papas Grandes (+$2.000)</div>
@@ -1002,6 +1070,25 @@ export default function ComoSeriaMenu() {
                         </button>
                       ))}
                     </div>
+                    {PAYMENT_ACCOUNTS[paymentMethod] && (
+                      <div className="payment-accounts">
+                        {PAYMENT_ACCOUNTS[paymentMethod].map((acc) => (
+                          <div key={acc.label} className="payment-account-row">
+                            <div className="payment-account-info">
+                              <span className="payment-account-label">{acc.label}</span>
+                              <span className="payment-account-value">{acc.value}</span>
+                            </div>
+                            <button
+                              type="button"
+                              className="payment-account-copy"
+                              onClick={() => copyToClipboard(acc.value)}
+                            >
+                              📋 Copiar
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {deliveryType === "domicilio" && deliveryLocation ? (

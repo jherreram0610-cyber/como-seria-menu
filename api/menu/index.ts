@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { query } from "../_lib/db.js";
 import { isAdminRequest, requireAdmin } from "../_lib/auth.js";
-import { CATEGORIES, groupByCategory, type MenuItemRow, type Category } from "../_lib/menu.js";
+import { groupByCategory, type MenuItemRow, type Category } from "../_lib/menu.js";
 
 interface CreateBody {
   category?: Category;
@@ -25,10 +25,18 @@ const MAX_BURGER_IMG_LENGTH = 1_500_000; // ~1.1MB de imagen ya en base64
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   if (req.method === "GET") {
     const wantsAll = req.query.all === "1" && isAdminRequest(req);
+    // El orden sigue categories.sort_order (no el id alfabéticamente), así las
+    // secciones del menú aparecen en el orden configurado desde el panel.
     const { rows } = await query(
       wantsAll
-        ? `select * from menu_items order by category, special desc, sort_order, created_at`
-        : `select * from menu_items where is_active = true order by category, special desc, sort_order, created_at`
+        ? `select mi.* from menu_items mi
+           join categories c on c.id = mi.category
+           where mi.is_deleted = false and c.is_deleted = false
+           order by c.sort_order, mi.special desc, mi.sort_order, mi.created_at`
+        : `select mi.* from menu_items mi
+           join categories c on c.id = mi.category
+           where mi.is_deleted = false and mi.is_active = true and c.is_deleted = false and c.is_active = true
+           order by c.sort_order, mi.special desc, mi.sort_order, mi.created_at`
     );
     return res.status(200).json(groupByCategory(rows as MenuItemRow[]));
   }
@@ -39,7 +47,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const body = (req.body || {}) as CreateBody;
     const { category, name, price } = body;
 
-    if (!category || !CATEGORIES.includes(category)) {
+    if (!category) {
+      return res.status(400).json({ error: "category inválida o faltante" });
+    }
+    const { rows: categoryRows } = await query(
+      `select 1 from categories where id = $1 and is_deleted = false`,
+      [category]
+    );
+    if (categoryRows.length === 0) {
       return res.status(400).json({ error: "category inválida o faltante" });
     }
     if (!name || !name.trim()) {

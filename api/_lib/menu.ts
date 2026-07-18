@@ -1,5 +1,7 @@
-export const CATEGORIES = ["hamburguesas", "tenders", "combos", "adiciones", "bebidas"] as const;
-export type Category = (typeof CATEGORIES)[number];
+// Las categorías ya no son un enum fijo: viven en la tabla `categories`
+// (editable/reordenable desde el panel), así que aquí `category` es un id
+// de texto libre (referenciado por foreign key en la base de datos).
+export type Category = string;
 
 export interface MenuItemRow {
   id: string;
@@ -41,15 +43,14 @@ export function rowToItem(row: MenuItemRow) {
   return item;
 }
 
+// Agrupa dinámicamente por la categoría real de cada fila (en vez de
+// preasignar un set fijo de claves), así respeta cualquier categoría nueva
+// creada desde el panel. El orden de las claves sigue el orden de `rows`
+// (el caller debe ordenar por categories.sort_order antes de llamar esto).
 export function groupByCategory(rows: MenuItemRow[]) {
-  const grouped: Record<Category, unknown[]> = {
-    hamburguesas: [],
-    tenders: [],
-    combos: [],
-    adiciones: [],
-    bebidas: [],
-  };
+  const grouped: Record<string, unknown[]> = {};
   for (const row of rows) {
+    if (!grouped[row.category]) grouped[row.category] = [];
     grouped[row.category].push(rowToItem(row));
   }
   return grouped;

@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { query } from "../_lib/db.js";
-import { requireAdmin } from "../_lib/auth.js";
+import { requireAdmin, verifyPasswordHash } from "../_lib/auth.js";
 
 interface UpdateBody {
   name?: string;
@@ -90,6 +90,25 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     return res.status(200).json({ item: rows[0] });
   }
 
-  res.setHeader("Allow", "PUT, PATCH");
+  if (req.method === "DELETE") {
+    const { pin } = (req.body || {}) as { pin?: string };
+    if (!pin) return res.status(400).json({ error: "Falta el PIN de eliminación" });
+
+    const { rows: settingsRows } = await query(`select delete_pin_hash from admin_settings where id = 'singleton'`);
+    const storedHash = settingsRows[0]?.delete_pin_hash;
+    if (!storedHash) {
+      return res.status(400).json({ error: "Todavía no se ha configurado un PIN de eliminación" });
+    }
+    if (!verifyPasswordHash(pin, storedHash)) {
+      return res.status(401).json({ error: "PIN incorrecto" });
+    }
+
+    // Nunca se borra el registro (DELETE FROM): solo se marca como eliminado.
+    const { rowCount } = await query(`update menu_items set is_deleted = true where id = $1`, [id]);
+    if (rowCount === 0) return res.status(404).json({ error: "Producto no encontrado" });
+    return res.status(200).json({ ok: true });
+  }
+
+  res.setHeader("Allow", "PUT, PATCH, DELETE");
   return res.status(405).json({ error: "Método no permitido" });
 }
