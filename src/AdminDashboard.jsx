@@ -1784,6 +1784,7 @@ export default function AdminDashboard() {
   const [newOrderAlert, setNewOrderAlert] = useState(null);
   const [highlightOrderId, setHighlightOrderId] = useState(null);
   const knownOrderIdsRef = useRef(null);
+  const loadingOrdersRef = useRef(false);
   const alertIntervalRef = useRef(null);
   const audioCtxRef = useRef(null);
 
@@ -1918,6 +1919,13 @@ export default function AdminDashboard() {
   }, [authState, ensureAudioContext]);
 
   const loadOrders = useCallback(() => {
+    // En redes lentas (móviles/tablets) una petición puede tardar más de los
+    // 7s del intervalo; sin esta guarda, dos peticiones podían quedar
+    // "en el aire" al mismo tiempo y cada una detectaba el mismo pedido como
+    // nuevo, duplicando/triplicando la alerta (sonido + notificación) para
+    // un único pedido real.
+    if (loadingOrdersRef.current) return;
+    loadingOrdersRef.current = true;
     api("/api/orders").then((d) => {
       const mapped = (d.orders || []).map(mapOrderRow);
       setOrders(mapped);
@@ -1936,7 +1944,9 @@ export default function AdminDashboard() {
         }
       }
       knownOrderIdsRef.current = new Set(mapped.map((o) => o.id));
-    }).catch(() => {});
+    }).catch(() => {}).finally(() => {
+      loadingOrdersRef.current = false;
+    });
   }, [playPagerBeep, notifyNewOrder]);
 
   const loadMenu = useCallback(() => {
