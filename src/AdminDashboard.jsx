@@ -53,6 +53,12 @@ const IconMoon = () => (
     <path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z" />
   </svg>
 );
+const IconArrowUp = () => (
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <line x1="12" y1="19" x2="12" y2="5" />
+    <polyline points="5 12 12 5 19 12" />
+  </svg>
+);
 
 function resizeImageToDataUrl(file, maxWidth = 900, quality = 0.82) {
   return new Promise((resolve, reject) => {
@@ -1162,6 +1168,7 @@ function MenuManager({ menuData, categories, reload }) {
             await api(`/api/menu/${deletingItem.id}`, { method: "DELETE", body: JSON.stringify({ pin }) });
             setDeletingItem(null);
             reload();
+            showToast("Producto eliminado");
           }}
         />
       )}
@@ -1475,6 +1482,7 @@ function CategoryManager({ categories, reload }) {
             await api(`/api/categories/${deletingItem.id}`, { method: "DELETE", body: JSON.stringify({ pin }) });
             setDeletingItem(null);
             reload();
+            showToast("Categoría eliminada");
           }}
         />
       )}
@@ -1741,6 +1749,22 @@ export default function AdminDashboard() {
   useEffect(() => {
     localStorage.setItem("adm-theme", theme);
   }, [theme]);
+
+  const [toast, setToast] = useState(null);
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2200);
+  };
+
+  // Botón flotante "volver arriba" — aparece cuando ya se hizo bastante scroll,
+  // útil en listas largas como Menú o Pedidos.
+  const [showScrollTop, setShowScrollTop] = useState(false);
+  useEffect(() => {
+    const onScroll = () => setShowScrollTop(window.scrollY > 400);
+    window.addEventListener("scroll", onScroll);
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+  const scrollToTop = () => window.scrollTo({ top: 0, behavior: "smooth" });
 
   const [authState, setAuthState] = useState("checking"); // checking | locked | unlocked
   const [pinInput, setPinInput] = useState("");
@@ -2071,6 +2095,12 @@ export default function AdminDashboard() {
   return (
     <div className="adm-root" data-theme={theme}>
       {printingOrder && <ComandaTemplate order={printingOrder} />}
+      {showScrollTop && (
+        <button className="adm-scroll-top-btn" onClick={scrollToTop} title="Volver arriba">
+          <IconArrowUp />
+        </button>
+      )}
+      {toast && <div className="adm-toast">✓ {toast}</div>}
       {newOrderAlert && (
         <div className="adm-new-order-banner" onClick={dismissNewOrderAlert}>
           <span className="adm-new-order-icon">🔔</span>
@@ -2153,6 +2183,7 @@ export default function AdminDashboard() {
             await api(`/api/orders/${deletingOrder.id}`, { method: "DELETE", body: JSON.stringify({ pin }) });
             setDeletingOrder(null);
             loadOrders();
+            showToast("Pedido eliminado");
           }}
         />
       )}
