@@ -2022,18 +2022,15 @@ export default function AdminDashboard() {
       if (knownOrderIdsRef.current) {
         const fresh = mapped.filter((o) => !knownOrderIdsRef.current.has(o.id));
         if (fresh.length > 0) {
-          // Deduplicar por id al acumular: si por lo que sea el mismo pedido
-          // se llegara a detectar como "nuevo" más de una vez, que nunca se
-          // cuente dos veces en el banner.
-          setNewOrderAlert((prev) => {
-            const prevOrders = prev?.orders || [];
-            const seenIds = new Set(prevOrders.map((o) => o.id));
-            const newOnes = fresh.filter((o) => !seenIds.has(o.id));
-            return { orders: [...newOnes, ...prevOrders] };
-          });
-          // Sonido (pitido tipo localizador) desactivado TEMPORALMENTE: en
-          // móviles la alerta seguía reapareciendo sola sin causa identificada
-          // todavía. El banner y la notificación del navegador se dejan activos.
+          // Banner rojo + sonido desactivados TEMPORALMENTE: en móviles la
+          // alerta seguía reapareciendo sola sin causa identificada todavía.
+          // Solo se deja activa la notificación nativa del navegador.
+          // setNewOrderAlert((prev) => {
+          //   const prevOrders = prev?.orders || [];
+          //   const seenIds = new Set(prevOrders.map((o) => o.id));
+          //   const newOnes = fresh.filter((o) => !seenIds.has(o.id));
+          //   return { orders: [...newOnes, ...prevOrders] };
+          // });
           // playPagerBeep();
           // if (!alertIntervalRef.current) {
           //   alertIntervalRef.current = setInterval(playPagerBeep, 2000);
