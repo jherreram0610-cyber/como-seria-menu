@@ -962,12 +962,17 @@ function printComanda(order) {
   // que abrir una pestaña nueva (window.open) — evitar el cambio de pestaña
   // parece ser justo lo que fallaba ahí ("se ha producido un problema al
   // imprimir la página").
+  // Con ancho/alto en 0 algunos navegadores de escritorio (Chrome en PC) no
+  // llegan a renderizar el contenido del iframe y terminan imprimiendo la
+  // página principal en su lugar (por eso salía en blanco con el encabezado
+  // de la URL). Con un tamaño real, aunque quede fuera de pantalla, el
+  // contenido sí se renderiza y el iframe se imprime correctamente.
   const iframe = document.createElement("iframe");
   iframe.style.position = "fixed";
-  iframe.style.right = "0";
-  iframe.style.bottom = "0";
-  iframe.style.width = "0";
-  iframe.style.height = "0";
+  iframe.style.top = "-10000px";
+  iframe.style.left = "-10000px";
+  iframe.style.width = "302px";
+  iframe.style.height = "400px";
   iframe.style.border = "0";
 
   const cleanup = () => {
@@ -1874,6 +1879,9 @@ export default function AdminDashboard() {
 
   // Beep tipo localizador (3 pitidos cortos) generado con Web Audio API, sin
   // depender de ningún archivo de audio externo.
+  // Sonido desactivado TEMPORALMENTE (ver loadOrders) — se deja la función
+  // lista para reactivarla apenas se resuelva el bug de alertas en móviles.
+  // eslint-disable-next-line no-unused-vars
   const playPagerBeep = useCallback(() => {
     const ctx = ensureAudioContext();
     if (!ctx) return;
@@ -2023,10 +2031,13 @@ export default function AdminDashboard() {
             const newOnes = fresh.filter((o) => !seenIds.has(o.id));
             return { orders: [...newOnes, ...prevOrders] };
           });
-          playPagerBeep();
-          if (!alertIntervalRef.current) {
-            alertIntervalRef.current = setInterval(playPagerBeep, 2000);
-          }
+          // Sonido (pitido tipo localizador) desactivado TEMPORALMENTE: en
+          // móviles la alerta seguía reapareciendo sola sin causa identificada
+          // todavía. El banner y la notificación del navegador se dejan activos.
+          // playPagerBeep();
+          // if (!alertIntervalRef.current) {
+          //   alertIntervalRef.current = setInterval(playPagerBeep, 2000);
+          // }
           fresh.forEach(notifyNewOrder);
         }
         // Se AGREGA a los ids ya conocidos, nunca se reemplaza el set completo:
@@ -2053,7 +2064,7 @@ export default function AdminDashboard() {
     }).catch(() => {}).finally(() => {
       loadingOrdersRef.current = false;
     });
-  }, [playPagerBeep, notifyNewOrder]);
+  }, [notifyNewOrder]);
 
   const loadMenu = useCallback(() => {
     api("/api/menu?all=1").then(setMenuData).catch(() => {});
