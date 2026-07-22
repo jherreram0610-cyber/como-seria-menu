@@ -105,3 +105,13 @@ end $$;
 -- pero se puede reactivar).
 alter table menu_items add column if not exists is_deleted boolean not null default false;
 alter table categories add column if not exists is_deleted boolean not null default false;
+
+-- Suscripciones de Web Push (una por dispositivo/navegador que le dio
+-- "Permitir" a las notificaciones desde el panel de admin). El endpoint ya es
+-- único por sí mismo (lo asigna el navegador), así que sirve como llave.
+create table if not exists push_subscriptions (
+  endpoint    text primary key,
+  p256dh      text not null,
+  auth        text not null,
+  created_at  timestamptz not null default now()
+);

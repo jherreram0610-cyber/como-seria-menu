@@ -84,6 +84,15 @@ function resizeImageToDataUrl(file, maxWidth = 900, quality = 0.82) {
   });
 }
 
+// El navegador espera la llave VAPID como Uint8Array, pero se genera/guarda
+// en base64url (ver scripts de generación con web-push).
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
+}
+
 async function api(path, options) {
   const res = await fetch(path, {
     ...options,
@@ -982,14 +991,19 @@ function printComanda(order) {
   iframe.onload = () => {
     try {
       iframe.contentWindow.focus();
+      iframe.contentWindow.addEventListener("afterprint", cleanup);
       iframe.contentWindow.print();
     } catch {
       cleanup();
       return;
     }
-    // No todos los navegadores disparan "afterprint" de forma confiable
-    // dentro de un iframe, así que se limpia con un tiempo de espera.
-    setTimeout(cleanup, 1000);
+    // "afterprint" no siempre se dispara (por ejemplo al elegir una app
+    // puente como RawBT, que sigue procesando el trabajo de impresión por
+    // su cuenta después de que el navegador cree haber terminado). Si se
+    // borra el iframe demasiado pronto, esas apps terminan capturando la
+    // página normal en su lugar en vez del ticket. Por eso el respaldo por
+    // tiempo es bastante generoso.
+    setTimeout(cleanup, 60000);
   };
 
   document.body.appendChild(iframe);
@@ -1870,34 +1884,46 @@ export default function AdminDashboard() {
   // la notificación del sistema. Por eso esto se llama también desde un
   // listener de "primer clic" más abajo, no solo desde playPagerBeep.
   const ensureAudioContext = useCallback(() => {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return null;
-    if (!audioCtxRef.current) audioCtxRef.current = new AudioCtx();
-    if (audioCtxRef.current.state === "suspended") audioCtxRef.current.resume();
-    return audioCtxRef.current;
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return null;
+      if (!audioCtxRef.current) audioCtxRef.current = new AudioCtx();
+      if (audioCtxRef.current.state === "suspended") audioCtxRef.current.resume().catch(() => {});
+      return audioCtxRef.current;
+    } catch {
+      // Algunos navegadores móviles bloquean por política de autoplay crear o
+      // reanudar audio si no viene de un toque directo del usuario (acá se
+      // llama también desde el sondeo automático). Sin este try/catch, ese
+      // bloqueo lanzaba un error que interrumpía loadOrders a mitad de camino
+      // — el pedido nunca se guardaba como "ya visto" y la alerta volvía a
+      // sonar en cada sondeo siguiente, sin parar, solo en celulares.
+      return null;
+    }
   }, []);
 
   // Beep tipo localizador (3 pitidos cortos) generado con Web Audio API, sin
   // depender de ningún archivo de audio externo.
-  // Sonido desactivado TEMPORALMENTE (ver loadOrders) — se deja la función
-  // lista para reactivarla apenas se resuelva el bug de alertas en móviles.
-  // eslint-disable-next-line no-unused-vars
   const playPagerBeep = useCallback(() => {
-    const ctx = ensureAudioContext();
-    if (!ctx) return;
-    const now = ctx.currentTime;
-    [0, 0.22, 0.44].forEach((offset) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "square";
-      osc.frequency.value = 1300;
-      gain.gain.setValueAtTime(0.35, now + offset);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.18);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now + offset);
-      osc.stop(now + offset + 0.2);
-    });
+    try {
+      const ctx = ensureAudioContext();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      [0, 0.22, 0.44].forEach((offset) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "square";
+        osc.frequency.value = 1300;
+        gain.gain.setValueAtTime(0.35, now + offset);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.18);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + offset);
+        osc.stop(now + offset + 0.2);
+      });
+    } catch {
+      // Ver comentario en ensureAudioContext: un fallo de audio nunca debe
+      // impedir que el pedido se marque como "ya visto".
+    }
   }, [ensureAudioContext]);
 
   const stopAlertSound = useCallback(() => {
@@ -1929,23 +1955,93 @@ export default function AdminDashboard() {
     typeof Notification !== "undefined" ? Notification.permission : "unsupported"
   );
 
+  // Suscribe este dispositivo a Web Push real: así llegan las notificaciones
+  // aunque el navegador esté minimizado o en otra app (no depende de que
+  // esta pestaña esté corriendo un sondeo). Se puede llamar varias veces sin
+  // problema — el navegador devuelve la misma suscripción si ya existía.
+  const subscribeToPush = useCallback(async () => {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const { publicKey } = await api("/api/push/public-key");
+      if (!publicKey) return; // llaves VAPID no configuradas en este entorno
+      const subscription = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+      await api("/api/push/subscribe", { method: "POST", body: JSON.stringify(subscription.toJSON()) });
+    } catch {
+      // Sin push real, igual queda el sonido/banner mientras la pestaña esté
+      // abierta — no es un fallo crítico.
+    }
+  }, []);
+
   const requestNotificationPermission = () => {
     if (typeof Notification === "undefined") return;
-    Notification.requestPermission().then(setNotifPermission);
+    Notification.requestPermission().then((perm) => {
+      setNotifPermission(perm);
+      if (perm === "granted") subscribeToPush();
+    });
   };
 
-  const notifyNewOrder = useCallback((order) => {
-    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
-    const notification = new Notification("🔔 Nuevo pedido — Cómo Sería", {
-      body: `${order.customerName} · ${fmt(order.total)}`,
-      icon: "/logo.png",
-      tag: `order-${order.id}`,
-    });
-    notification.onclick = () => {
-      window.focus();
-      acknowledgeNewOrder(order.id);
-      notification.close();
+  // En Android, la mayoría de navegadores no soportan crear notificaciones
+  // directamente desde el código de la página (`new Notification(...)`) —
+  // el permiso se concede pero nunca aparece nada. Solo lo permiten a través
+  // de un service worker (`registration.showNotification`), por eso se
+  // registra uno (public/sw.js) apenas se desbloquea el panel.
+  useEffect(() => {
+    if (authState !== "unlocked" || !("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.register("/sw.js").then(() => {
+      // Si el permiso ya se había concedido en una sesión anterior, hay que
+      // renovar/confirmar la suscripción push en cada carga (puede haber
+      // expirado, o ser la primera vez que corre este código en el
+      // dispositivo aunque el permiso ya estuviera dado desde antes).
+      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+        subscribeToPush();
+      }
+    }).catch(() => {});
+  }, [authState, subscribeToPush]);
+
+  // Cuando el admin toca la notificación del sistema (que vive en el service
+  // worker, no en esta pestaña), este mensaje es cómo nos enteramos acá para
+  // apagar el sonido y abrir el pedido — igual que el clic en el banner interno.
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const onMessage = (event) => {
+      if (event.data?.type === "notification-click") {
+        window.focus();
+        acknowledgeNewOrder(event.data.orderId);
+      }
     };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [acknowledgeNewOrder]);
+
+  const notifyNewOrder = useCallback((order) => {
+    try {
+      if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+      const options = {
+        body: `${order.customerName} · ${fmt(order.total)}`,
+        icon: "/logo.png",
+        tag: `order-${order.id}`,
+        data: { orderId: order.id },
+      };
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.ready.then((reg) => reg.showNotification("🔔 Nuevo pedido — Cómo Sería", options)).catch(() => {});
+        return;
+      }
+      // Respaldo para navegadores sin service worker (ej. desktop más viejo):
+      // acá sí funciona el método directo.
+      const notification = new Notification("🔔 Nuevo pedido — Cómo Sería", options);
+      notification.onclick = () => {
+        window.focus();
+        acknowledgeNewOrder(order.id);
+        notification.close();
+      };
+    } catch {
+      // Un fallo al crear la notificación (ej. permiso revocado a mitad de
+      // sesión) nunca debe impedir que el pedido se marque como "ya visto".
+    }
   }, [acknowledgeNewOrder]);
 
   const [exportingOrdersPdf, setExportingOrdersPdf] = useState(false);
@@ -2022,20 +2118,30 @@ export default function AdminDashboard() {
       if (knownOrderIdsRef.current) {
         const fresh = mapped.filter((o) => !knownOrderIdsRef.current.has(o.id));
         if (fresh.length > 0) {
-          // Banner rojo + sonido desactivados TEMPORALMENTE: en móviles la
-          // alerta seguía reapareciendo sola sin causa identificada todavía.
-          // Solo se deja activa la notificación nativa del navegador.
-          // setNewOrderAlert((prev) => {
-          //   const prevOrders = prev?.orders || [];
-          //   const seenIds = new Set(prevOrders.map((o) => o.id));
-          //   const newOnes = fresh.filter((o) => !seenIds.has(o.id));
-          //   return { orders: [...newOnes, ...prevOrders] };
-          // });
-          // playPagerBeep();
-          // if (!alertIntervalRef.current) {
-          //   alertIntervalRef.current = setInterval(playPagerBeep, 2000);
-          // }
-          fresh.forEach(notifyNewOrder);
+          // En navegadores móviles, reproducir sonido desde un temporizador
+          // (sin gesto directo del usuario) puede ser bloqueado por la
+          // política de autoplay y lanzar un error; sin este try/catch ese
+          // error interrumpía todo lo que sigue e impedía marcar el pedido
+          // como "ya visto" más abajo — la alerta volvía a sonar sin parar
+          // cada 7s, solo en celular, hasta recargar la página.
+          try {
+            // Deduplicar por id al acumular: si por lo que sea el mismo pedido
+            // se llegara a detectar como "nuevo" más de una vez, que nunca se
+            // cuente dos veces en el banner.
+            setNewOrderAlert((prev) => {
+              const prevOrders = prev?.orders || [];
+              const seenIds = new Set(prevOrders.map((o) => o.id));
+              const newOnes = fresh.filter((o) => !seenIds.has(o.id));
+              return { orders: [...newOnes, ...prevOrders] };
+            });
+            playPagerBeep();
+            if (!alertIntervalRef.current) {
+              alertIntervalRef.current = setInterval(playPagerBeep, 2000);
+            }
+            fresh.forEach(notifyNewOrder);
+          } catch {
+            // noop — ver comentario arriba.
+          }
         }
         // Se AGREGA a los ids ya conocidos, nunca se reemplaza el set completo:
         // en conexiones inestables (móviles/tablets) una revisión puntual
@@ -2061,7 +2167,7 @@ export default function AdminDashboard() {
     }).catch(() => {}).finally(() => {
       loadingOrdersRef.current = false;
     });
-  }, [notifyNewOrder]);
+  }, [playPagerBeep, notifyNewOrder]);
 
   const loadMenu = useCallback(() => {
     api("/api/menu?all=1").then(setMenuData).catch(() => {});

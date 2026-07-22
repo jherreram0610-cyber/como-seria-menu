@@ -29,6 +29,9 @@ services:
       DATABASE_URL: postgres://postgres:postgres@db:5432/comoseria
       ADMIN_PASSWORD: comoseria-test-2026
       ADMIN_SESSION_SECRET: local-dev-secret-change-me-please-1234567890
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY}
+      VAPID_SUBJECT: ${VAPID_SUBJECT}
     ports:
       - "3001:3001"
     depends_on:
