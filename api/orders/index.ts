@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { query } from "../_lib/db.js";
 import { requireAdmin } from "../_lib/auth.js";
+import { notifyPushSubscribers } from "../_lib/push.js";
 
 interface CreateOrderBody {
   customerName?: string;
@@ -49,6 +50,14 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         body.paymentMethod || null,
       ]
     );
+
+    // No debe bloquear ni fallar la respuesta al cliente si el envío del push
+    // tarda o falla — la orden ya quedó guardada, eso es lo importante.
+    notifyPushSubscribers({
+      customerName: customerName.trim(),
+      total,
+      orderId: rows[0].id,
+    }).catch(() => {});
 
     return res.status(201).json({ order: rows[0] });
   }

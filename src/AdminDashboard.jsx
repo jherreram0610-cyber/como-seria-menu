@@ -1,5 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import logoImg from "/logo.svg";
+import {
+  isBluetoothPrintingSupported,
+  getLinkedPrinters,
+  linkNewPrinter,
+  renamePrinter,
+  unlinkPrinter,
+  printToPrinter,
+  printToAllPrinters,
+  buildComandaEscPos,
+} from "./blePrinter.js";
 
 const fmt = (n) => "$" + n.toLocaleString("es-CO");
 const formatAdicion = (a, itemQty = 1) => {
@@ -82,6 +92,15 @@ function resizeImageToDataUrl(file, maxWidth = 900, quality = 0.82) {
     };
     reader.readAsDataURL(file);
   });
+}
+
+// El navegador espera la llave VAPID como Uint8Array, pero se genera/guarda
+// en base64url (ver scripts de generación con web-push).
+function urlBase64ToUint8Array(base64String) {
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+  const rawData = atob(base64);
+  return Uint8Array.from([...rawData].map((c) => c.charCodeAt(0)));
 }
 
 async function api(path, options) {
@@ -780,6 +799,78 @@ function OrderDetail({ order }) {
   );
 }
 
+// Si no hay ninguna impresora Bluetooth vinculada, se comporta igual que
+// antes (un solo clic, imprime con el sistema). Si hay una o más, abre un
+// menú para elegir a cuál mandar la comanda (o a todas a la vez).
+function PrintButton({ order, onPrint }) {
+  const [open, setOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState(null);
+  const btnRef = useRef(null);
+  const printers = getLinkedPrinters();
+
+  if (printers.length === 0) {
+    return (
+      <button
+        className="adm-order-print-btn"
+        title="Vincula una impresora Bluetooth primero"
+        onClick={(e) => { e.stopPropagation(); onPrint(order, "none"); }}
+      >
+        <IconPrinter />
+      </button>
+    );
+  }
+
+  // El menú se posiciona "fixed" con las coordenadas del botón en vez de
+  // "absolute" dentro de la fila del pedido: la lista de pedidos recorta
+  // (overflow: hidden) cualquier cosa que se salga de una fila, así que un
+  // menú "absolute" quedaba tapado por los pedidos de abajo.
+  const toggleOpen = () => {
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setMenuPos({ top: rect.bottom + 6, right: window.innerWidth - rect.right });
+    }
+    setOpen((v) => !v);
+  };
+
+  return (
+    <div onClick={(e) => e.stopPropagation()}>
+      <button ref={btnRef} className="adm-order-print-btn" title="Elegir impresora" onClick={toggleOpen}>
+        <IconPrinter />
+      </button>
+      {open && menuPos && (
+        <>
+          <div className="adm-dropdown-catcher" onClick={() => setOpen(false)} />
+          <div className="adm-profile-dropdown" style={{ position: "fixed", top: menuPos.top, right: menuPos.right }}>
+            {printers.map((p) => (
+              <div key={p.id} style={{ display: "flex", alignItems: "center" }}>
+                <button style={{ flex: 1 }} onClick={() => { setOpen(false); onPrint(order, p.id); }}>
+                  🖨️ {p.label}
+                </button>
+                <button
+                  title="Reconectar esta impresora (si dio error de permiso) y mandarle la comanda"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    try {
+                      await linkNewPrinter(p.label);
+                      setOpen(false);
+                      onPrint(order, p.id);
+                    } catch {
+                      // el usuario canceló el selector, o falló — se queda el menú abierto
+                    }
+                  }}
+                >
+                  🔄
+                </button>
+              </div>
+            ))}
+            <button onClick={() => { setOpen(false); onPrint(order, "all"); }}>📠 Todas</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── RECENT ORDERS ─────────────────────────────────────────────────────────
 function RecentOrders({ orders, onPrint, onDelete, highlightOrderId }) {
   const [expandedId, setExpandedId] = useState(null);
@@ -836,13 +927,7 @@ function RecentOrders({ orders, onPrint, onDelete, highlightOrderId }) {
                 </div>
               </div>
               <div className="adm-order-right">
-                <button
-                  className="adm-order-print-btn"
-                  title="Imprimir comanda"
-                  onClick={(e) => { e.stopPropagation(); onPrint(o); }}
-                >
-                  <IconPrinter />
-                </button>
+                <PrintButton order={o} onPrint={onPrint} />
                 <button
                   className="adm-order-delete-btn"
                   title="Eliminar pedido"
@@ -860,140 +945,6 @@ function RecentOrders({ orders, onPrint, onDelete, highlightOrderId }) {
       })}
     </div>
   );
-}
-
-// ─── COMANDA DE IMPRESIÓN (58mm) ────────────────────────────────────────────
-// Se imprime abriendo una pestaña/ventana aparte que SOLO contiene la comanda,
-// en vez de "ocultar todo lo demás" con CSS sobre la misma página — ese truco
-// (position/visibility) resultó poco confiable en el motor de impresión de
-// Chrome para Android (salía en blanco), así que esto evita el problema de raíz.
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function buildComandaHtml(order) {
-  const itemsHtml = order.products.map((item) => {
-    const lines = [
-      `<div class="comanda-item-top"><span>${item.qty} x ${escapeHtml(item.name)}</span><span>${fmt((item.totalPrice ?? 0) * (item.qty || 1))}</span></div>`,
-    ];
-    if (item.removedIngredients?.length > 0) lines.push(`<div>Sin: ${escapeHtml(item.removedIngredients.join(", "))}</div>`);
-    if (item.bebida) lines.push(`<div>Bebida: ${escapeHtml(item.bebida.name)}</div>`);
-    if (item.side) lines.push(`<div>${escapeHtml(item.side.name)}</div>`);
-    if (item.adiciones?.length > 0) {
-      item.adiciones.forEach((a) => lines.push(`<div>+ ${escapeHtml(formatAdicion(a, item.qty))}</div>`));
-    }
-    if (item.agrandarPapas) lines.push(`<div>Papas grandes</div>`);
-    if (item.comment) lines.push(`<div>Nota: ${escapeHtml(item.comment)}</div>`);
-    return `<div class="comanda-item">${lines.join("")}</div>`;
-  }).join("");
-
-  const addressHtml = order.deliveryType === "domicilio" && order.deliveryAddress
-    ? `<div class="comanda-address"><div class="comanda-address-label">DIRECCIÓN</div>${escapeHtml(order.deliveryAddress)}</div>`
-    : "";
-  const deliveryFeeHtml = order.deliveryFee > 0
-    ? `<div class="comanda-item-top"><span>Domicilio</span><span>${fmt(order.deliveryFee)}</span></div>`
-    : "";
-  const paymentHtml = order.paymentMethod
-    ? `<div>Pago: ${escapeHtml(PAYMENT_LABELS[order.paymentMethod] || order.paymentMethod)}</div>`
-    : "";
-  const deliveryLineHtml = order.deliveryType === "domicilio"
-    ? `Domicilio: ${escapeHtml(order.deliveryLocation || "")}`
-    : "Para recoger en tienda";
-
-  return `<!doctype html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>Comanda</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    width: 58mm; font-family: 'Courier New', monospace; font-size: 11px;
-    color: #000; background: #fff; line-height: 1.4;
-  }
-  .comanda-center { text-align: center; }
-  .comanda-banner {
-    text-align: center; font-size: 14px; font-weight: 700; letter-spacing: 1px;
-    border-top: 3px double #000; border-bottom: 3px double #000;
-    padding: 4px 0; margin-bottom: 6px;
-  }
-  .comanda-title { font-size: 15px; font-weight: 700; }
-  .comanda-line { border-top: 1px dashed #000; margin: 6px 0; }
-  .comanda-item { margin-bottom: 4px; }
-  .comanda-item-top { display: flex; justify-content: space-between; gap: 8px; font-weight: 700; }
-  .comanda-total { font-size: 13px; }
-  .comanda-address {
-    font-weight: 700; font-size: 13px; border: 1.5px solid #000; border-radius: 3px;
-    padding: 5px 6px; margin: 5px 0; line-height: 1.3;
-  }
-  .comanda-address-label { font-size: 9px; letter-spacing: 0.5px; margin-bottom: 2px; }
-  @page { size: 58mm auto; margin: 2mm; }
-</style>
-</head>
-<body>
-  <div class="comanda-banner">APP DOMICILIOS</div>
-  <div class="comanda-center comanda-title">CÓMO SERÍA</div>
-  <div class="comanda-center">COMANDA</div>
-  <div class="comanda-line"></div>
-  <div>Cliente: ${escapeHtml(order.customerName)}</div>
-  <div>${escapeHtml(order.date)} · ${escapeHtml(order.time)}</div>
-  <div class="comanda-line"></div>
-  ${itemsHtml}
-  <div class="comanda-line"></div>
-  <div>${deliveryLineHtml}</div>
-  ${addressHtml}
-  ${paymentHtml}
-  <div class="comanda-line"></div>
-  <div class="comanda-item-top"><span>Subtotal</span><span>${fmt(order.subtotal)}</span></div>
-  ${deliveryFeeHtml}
-  <div class="comanda-item-top comanda-total"><span>TOTAL</span><span>${fmt(order.total)}</span></div>
-  <div class="comanda-line"></div>
-  <div class="comanda-center">¡Gracias por tu pedido!</div>
-</body>
-</html>`;
-}
-
-function printComanda(order) {
-  // Un iframe oculto dentro de la misma página es más confiable en Android
-  // que abrir una pestaña nueva (window.open) — evitar el cambio de pestaña
-  // parece ser justo lo que fallaba ahí ("se ha producido un problema al
-  // imprimir la página").
-  // Con ancho/alto en 0 algunos navegadores de escritorio (Chrome en PC) no
-  // llegan a renderizar el contenido del iframe y terminan imprimiendo la
-  // página principal en su lugar (por eso salía en blanco con el encabezado
-  // de la URL). Con un tamaño real, aunque quede fuera de pantalla, el
-  // contenido sí se renderiza y el iframe se imprime correctamente.
-  const iframe = document.createElement("iframe");
-  iframe.style.position = "fixed";
-  iframe.style.top = "-10000px";
-  iframe.style.left = "-10000px";
-  iframe.style.width = "302px";
-  iframe.style.height = "400px";
-  iframe.style.border = "0";
-
-  const cleanup = () => {
-    if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-  };
-
-  iframe.onload = () => {
-    try {
-      iframe.contentWindow.focus();
-      iframe.contentWindow.print();
-    } catch {
-      cleanup();
-      return;
-    }
-    // No todos los navegadores disparan "afterprint" de forma confiable
-    // dentro de un iframe, así que se limpia con un tiempo de espera.
-    setTimeout(cleanup, 1000);
-  };
-
-  document.body.appendChild(iframe);
-  iframe.srcdoc = buildComandaHtml(order);
 }
 
 // ─── FORMULARIO DE PRODUCTO ────────────────────────────────────────────────
@@ -1679,6 +1630,137 @@ function ChangePasswordModal({ onClose }) {
   );
 }
 
+// ─── IMPRESORAS BLUETOOTH ───────────────────────────────────────────────────
+function BluetoothPrintersModal({ onClose }) {
+  const [printers, setPrinters] = useState(() => getLinkedPrinters());
+  const [newLabel, setNewLabel] = useState("");
+  const [linking, setLinking] = useState(false);
+  const [error, setError] = useState("");
+  const [editingId, setEditingId] = useState(null);
+  const [editingLabel, setEditingLabel] = useState("");
+  const supported = isBluetoothPrintingSupported();
+
+  const handleLink = async () => {
+    setError("");
+    setLinking(true);
+    try {
+      await linkNewPrinter(newLabel);
+      setNewLabel("");
+      setPrinters(getLinkedPrinters());
+    } catch (err) {
+      // El usuario cancelando el selector también cae acá (no es un error real)
+      if (err?.name !== "NotFoundError") {
+        setError(err.message || "No se pudo vincular la impresora");
+      }
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  const handleUnlink = (id) => {
+    unlinkPrinter(id);
+    setPrinters(getLinkedPrinters());
+  };
+
+  // Recupera la conexión sin tener que quitar la impresora y escribir la
+  // etiqueta de nuevo — pasa esto cuando sale "sin permiso persistente"
+  // (ej. después de recargar la página) o simplemente para refrescarla.
+  const handleReconnect = async (printer) => {
+    setError("");
+    setLinking(true);
+    try {
+      await linkNewPrinter(printer.label);
+      setPrinters(getLinkedPrinters());
+    } catch (err) {
+      if (err?.name !== "NotFoundError") {
+        setError(err.message || "No se pudo reconectar la impresora");
+      }
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  const startEditing = (p) => {
+    setEditingId(p.id);
+    setEditingLabel(p.label);
+  };
+
+  const saveLabel = () => {
+    renamePrinter(editingId, editingLabel);
+    setPrinters(getLinkedPrinters());
+    setEditingId(null);
+  };
+
+  return (
+    <div className="adm-modal-overlay" onClick={onClose}>
+      <div className="adm-modal-card" onClick={(e) => e.stopPropagation()}>
+        <div className="adm-section-title">🖨️ Impresoras Bluetooth</div>
+        {!supported ? (
+          <p className="adm-form-error">
+            Este navegador no soporta impresión directa por Bluetooth. Prueba con Chrome o Brave en Android.
+          </p>
+        ) : (
+          <>
+            <p style={{ fontSize: "13px", opacity: 0.8, marginBottom: "12px" }}>
+              Cada impresora queda vinculada a este dispositivo/navegador (el Bluetooth es de corto alcance).
+              Ponle una etiqueta a cada una (ej. "Cocina", "Caja") — al imprimir una comanda podrás elegir a
+              cuál mandarla, o mandarla a todas a la vez.
+            </p>
+            {printers.length === 0 ? (
+              <p style={{ opacity: 0.7 }}>Todavía no has vinculado ninguna.</p>
+            ) : (
+              <ul style={{ listStyle: "none", padding: 0, margin: "0 0 12px" }}>
+                {printers.map((p) => (
+                  <li key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--border-color, #333)" }}>
+                    {editingId === p.id ? (
+                      <input
+                        type="text"
+                        value={editingLabel}
+                        autoFocus
+                        onChange={(e) => setEditingLabel(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && saveLabel()}
+                        onBlur={saveLabel}
+                        style={{ flex: 1, marginRight: "8px" }}
+                      />
+                    ) : (
+                      <span onClick={() => startEditing(p)} style={{ cursor: "pointer" }} title="Clic para renombrar">
+                        🖨️ {p.label} <small style={{ opacity: 0.6 }}>({p.name})</small>
+                      </span>
+                    )}
+                    <div style={{ display: "flex", gap: "6px" }}>
+                      <button type="button" className="adm-btn-ghost" onClick={() => handleReconnect(p)} disabled={linking} title="Si sale 'sin permiso persistente', dale acá">
+                        🔄 Reconectar
+                      </button>
+                      <button type="button" className="adm-btn-ghost" onClick={() => handleUnlink(p.id)}>Quitar</button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {error && <p className="adm-form-error">{error}</p>}
+            <div className="adm-product-form" style={{ marginBottom: "8px" }}>
+              <label htmlFor="new-printer-label">Etiqueta para la nueva impresora</label>
+              <input
+                id="new-printer-label"
+                type="text"
+                placeholder="ej. Cocina"
+                value={newLabel}
+                onChange={(e) => setNewLabel(e.target.value)}
+              />
+            </div>
+            <div className="adm-form-actions">
+              <button type="button" className="adm-btn-ghost" onClick={onClose}>Cerrar</button>
+              <button type="button" className="adm-btn-primary" onClick={handleLink} disabled={linking}>
+                {linking ? <><span className="adm-btn-spinner" /> Buscando...</> : "+ Vincular impresora"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── CAMBIAR PIN DE ELIMINACIÓN ─────────────────────────────────────────────
 function ChangeDeletePinModal({ onClose }) {
   const [currentPin, setCurrentPin] = useState("");
@@ -1828,9 +1910,30 @@ export default function AdminDashboard() {
   }, [theme]);
 
   const [toast, setToast] = useState(null);
-  const showToast = (msg) => {
+  const showToast = (msg, duration = 2200) => {
     setToast(msg);
-    setTimeout(() => setToast(null), 2200);
+    setTimeout(() => setToast(null), duration);
+  };
+
+  // target: id de una impresora vinculada, "all" (todas las vinculadas), o
+  // "none" (no hay ninguna vinculada todavía).
+  const handlePrintComanda = async (order, target) => {
+    if (target === "none") {
+      showToast("⚠ Primero vincula o sincroniza una impresora (Perfil → Impresoras Bluetooth)", 5000);
+      return;
+    }
+    const bytes = buildComandaEscPos(order);
+    try {
+      if (target === "all") {
+        const results = await printToAllPrinters(bytes);
+        showToast(results.map((r) => `${r.ok ? "✓" : "⚠"} ${r.label}`).join(" · "), 5000);
+      } else {
+        await printToPrinter(target, bytes);
+        showToast("✓ Comanda enviada a la impresora");
+      }
+    } catch (err) {
+      showToast(`⚠ No se pudo imprimir: ${err.message}`, 5000);
+    }
   };
 
   // Botón flotante "volver arriba" — aparece cuando ya se hizo bastante scroll,
@@ -1854,6 +1957,7 @@ export default function AdminDashboard() {
   const [categories, setCategories] = useState([]);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showChangeDeletePin, setShowChangeDeletePin] = useState(false);
+  const [showBluetoothPrinters, setShowBluetoothPrinters] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [logoError, setLogoError] = useState(false);
   const [deletingOrder, setDeletingOrder] = useState(null);
@@ -1870,34 +1974,46 @@ export default function AdminDashboard() {
   // la notificación del sistema. Por eso esto se llama también desde un
   // listener de "primer clic" más abajo, no solo desde playPagerBeep.
   const ensureAudioContext = useCallback(() => {
-    const AudioCtx = window.AudioContext || window.webkitAudioContext;
-    if (!AudioCtx) return null;
-    if (!audioCtxRef.current) audioCtxRef.current = new AudioCtx();
-    if (audioCtxRef.current.state === "suspended") audioCtxRef.current.resume();
-    return audioCtxRef.current;
+    try {
+      const AudioCtx = window.AudioContext || window.webkitAudioContext;
+      if (!AudioCtx) return null;
+      if (!audioCtxRef.current) audioCtxRef.current = new AudioCtx();
+      if (audioCtxRef.current.state === "suspended") audioCtxRef.current.resume().catch(() => {});
+      return audioCtxRef.current;
+    } catch {
+      // Algunos navegadores móviles bloquean por política de autoplay crear o
+      // reanudar audio si no viene de un toque directo del usuario (acá se
+      // llama también desde el sondeo automático). Sin este try/catch, ese
+      // bloqueo lanzaba un error que interrumpía loadOrders a mitad de camino
+      // — el pedido nunca se guardaba como "ya visto" y la alerta volvía a
+      // sonar en cada sondeo siguiente, sin parar, solo en celulares.
+      return null;
+    }
   }, []);
 
   // Beep tipo localizador (3 pitidos cortos) generado con Web Audio API, sin
   // depender de ningún archivo de audio externo.
-  // Sonido desactivado TEMPORALMENTE (ver loadOrders) — se deja la función
-  // lista para reactivarla apenas se resuelva el bug de alertas en móviles.
-  // eslint-disable-next-line no-unused-vars
   const playPagerBeep = useCallback(() => {
-    const ctx = ensureAudioContext();
-    if (!ctx) return;
-    const now = ctx.currentTime;
-    [0, 0.22, 0.44].forEach((offset) => {
-      const osc = ctx.createOscillator();
-      const gain = ctx.createGain();
-      osc.type = "square";
-      osc.frequency.value = 1300;
-      gain.gain.setValueAtTime(0.35, now + offset);
-      gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.18);
-      osc.connect(gain);
-      gain.connect(ctx.destination);
-      osc.start(now + offset);
-      osc.stop(now + offset + 0.2);
-    });
+    try {
+      const ctx = ensureAudioContext();
+      if (!ctx) return;
+      const now = ctx.currentTime;
+      [0, 0.22, 0.44].forEach((offset) => {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "square";
+        osc.frequency.value = 1300;
+        gain.gain.setValueAtTime(0.35, now + offset);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + offset + 0.18);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(now + offset);
+        osc.stop(now + offset + 0.2);
+      });
+    } catch {
+      // Ver comentario en ensureAudioContext: un fallo de audio nunca debe
+      // impedir que el pedido se marque como "ya visto".
+    }
   }, [ensureAudioContext]);
 
   const stopAlertSound = useCallback(() => {
@@ -1929,23 +2045,93 @@ export default function AdminDashboard() {
     typeof Notification !== "undefined" ? Notification.permission : "unsupported"
   );
 
+  // Suscribe este dispositivo a Web Push real: así llegan las notificaciones
+  // aunque el navegador esté minimizado o en otra app (no depende de que
+  // esta pestaña esté corriendo un sondeo). Se puede llamar varias veces sin
+  // problema — el navegador devuelve la misma suscripción si ya existía.
+  const subscribeToPush = useCallback(async () => {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) return;
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const { publicKey } = await api("/api/push/public-key");
+      if (!publicKey) return; // llaves VAPID no configuradas en este entorno
+      const subscription = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(publicKey),
+      });
+      await api("/api/push/subscribe", { method: "POST", body: JSON.stringify(subscription.toJSON()) });
+    } catch {
+      // Sin push real, igual queda el sonido/banner mientras la pestaña esté
+      // abierta — no es un fallo crítico.
+    }
+  }, []);
+
   const requestNotificationPermission = () => {
     if (typeof Notification === "undefined") return;
-    Notification.requestPermission().then(setNotifPermission);
+    Notification.requestPermission().then((perm) => {
+      setNotifPermission(perm);
+      if (perm === "granted") subscribeToPush();
+    });
   };
 
-  const notifyNewOrder = useCallback((order) => {
-    if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
-    const notification = new Notification("🔔 Nuevo pedido — Cómo Sería", {
-      body: `${order.customerName} · ${fmt(order.total)}`,
-      icon: "/logo.png",
-      tag: `order-${order.id}`,
-    });
-    notification.onclick = () => {
-      window.focus();
-      acknowledgeNewOrder(order.id);
-      notification.close();
+  // En Android, la mayoría de navegadores no soportan crear notificaciones
+  // directamente desde el código de la página (`new Notification(...)`) —
+  // el permiso se concede pero nunca aparece nada. Solo lo permiten a través
+  // de un service worker (`registration.showNotification`), por eso se
+  // registra uno (public/sw.js) apenas se desbloquea el panel.
+  useEffect(() => {
+    if (authState !== "unlocked" || !("serviceWorker" in navigator)) return;
+    navigator.serviceWorker.register("/sw.js").then(() => {
+      // Si el permiso ya se había concedido en una sesión anterior, hay que
+      // renovar/confirmar la suscripción push en cada carga (puede haber
+      // expirado, o ser la primera vez que corre este código en el
+      // dispositivo aunque el permiso ya estuviera dado desde antes).
+      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+        subscribeToPush();
+      }
+    }).catch(() => {});
+  }, [authState, subscribeToPush]);
+
+  // Cuando el admin toca la notificación del sistema (que vive en el service
+  // worker, no en esta pestaña), este mensaje es cómo nos enteramos acá para
+  // apagar el sonido y abrir el pedido — igual que el clic en el banner interno.
+  useEffect(() => {
+    if (!("serviceWorker" in navigator)) return;
+    const onMessage = (event) => {
+      if (event.data?.type === "notification-click") {
+        window.focus();
+        acknowledgeNewOrder(event.data.orderId);
+      }
     };
+    navigator.serviceWorker.addEventListener("message", onMessage);
+    return () => navigator.serviceWorker.removeEventListener("message", onMessage);
+  }, [acknowledgeNewOrder]);
+
+  const notifyNewOrder = useCallback((order) => {
+    try {
+      if (typeof Notification === "undefined" || Notification.permission !== "granted") return;
+      const options = {
+        body: `${order.customerName} · ${fmt(order.total)}`,
+        icon: "/logo.png",
+        tag: `order-${order.id}`,
+        data: { orderId: order.id },
+      };
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.ready.then((reg) => reg.showNotification("🔔 Nuevo pedido — Cómo Sería", options)).catch(() => {});
+        return;
+      }
+      // Respaldo para navegadores sin service worker (ej. desktop más viejo):
+      // acá sí funciona el método directo.
+      const notification = new Notification("🔔 Nuevo pedido — Cómo Sería", options);
+      notification.onclick = () => {
+        window.focus();
+        acknowledgeNewOrder(order.id);
+        notification.close();
+      };
+    } catch {
+      // Un fallo al crear la notificación (ej. permiso revocado a mitad de
+      // sesión) nunca debe impedir que el pedido se marque como "ya visto".
+    }
   }, [acknowledgeNewOrder]);
 
   const [exportingOrdersPdf, setExportingOrdersPdf] = useState(false);
@@ -2022,20 +2208,30 @@ export default function AdminDashboard() {
       if (knownOrderIdsRef.current) {
         const fresh = mapped.filter((o) => !knownOrderIdsRef.current.has(o.id));
         if (fresh.length > 0) {
-          // Banner rojo + sonido desactivados TEMPORALMENTE: en móviles la
-          // alerta seguía reapareciendo sola sin causa identificada todavía.
-          // Solo se deja activa la notificación nativa del navegador.
-          // setNewOrderAlert((prev) => {
-          //   const prevOrders = prev?.orders || [];
-          //   const seenIds = new Set(prevOrders.map((o) => o.id));
-          //   const newOnes = fresh.filter((o) => !seenIds.has(o.id));
-          //   return { orders: [...newOnes, ...prevOrders] };
-          // });
-          // playPagerBeep();
-          // if (!alertIntervalRef.current) {
-          //   alertIntervalRef.current = setInterval(playPagerBeep, 2000);
-          // }
-          fresh.forEach(notifyNewOrder);
+          // En navegadores móviles, reproducir sonido desde un temporizador
+          // (sin gesto directo del usuario) puede ser bloqueado por la
+          // política de autoplay y lanzar un error; sin este try/catch ese
+          // error interrumpía todo lo que sigue e impedía marcar el pedido
+          // como "ya visto" más abajo — la alerta volvía a sonar sin parar
+          // cada 7s, solo en celular, hasta recargar la página.
+          try {
+            // Deduplicar por id al acumular: si por lo que sea el mismo pedido
+            // se llegara a detectar como "nuevo" más de una vez, que nunca se
+            // cuente dos veces en el banner.
+            setNewOrderAlert((prev) => {
+              const prevOrders = prev?.orders || [];
+              const seenIds = new Set(prevOrders.map((o) => o.id));
+              const newOnes = fresh.filter((o) => !seenIds.has(o.id));
+              return { orders: [...newOnes, ...prevOrders] };
+            });
+            playPagerBeep();
+            if (!alertIntervalRef.current) {
+              alertIntervalRef.current = setInterval(playPagerBeep, 2000);
+            }
+            fresh.forEach(notifyNewOrder);
+          } catch {
+            // noop — ver comentario arriba.
+          }
         }
         // Se AGREGA a los ids ya conocidos, nunca se reemplaza el set completo:
         // en conexiones inestables (móviles/tablets) una revisión puntual
@@ -2061,7 +2257,7 @@ export default function AdminDashboard() {
     }).catch(() => {}).finally(() => {
       loadingOrdersRef.current = false;
     });
-  }, [notifyNewOrder]);
+  }, [playPagerBeep, notifyNewOrder]);
 
   const loadMenu = useCallback(() => {
     api("/api/menu?all=1").then(setMenuData).catch(() => {});
@@ -2285,6 +2481,9 @@ export default function AdminDashboard() {
                     <button onClick={() => { setShowChangeDeletePin(true); setShowProfileMenu(false); }}>
                       🗑️ Cambiar clave de eliminación
                     </button>
+                    <button onClick={() => { setShowBluetoothPrinters(true); setShowProfileMenu(false); }}>
+                      🖨️ Impresoras Bluetooth
+                    </button>
                   </div>
                 </>
               )}
@@ -2297,6 +2496,7 @@ export default function AdminDashboard() {
 
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
       {showChangeDeletePin && <ChangeDeletePinModal onClose={() => setShowChangeDeletePin(false)} />}
+      {showBluetoothPrinters && <BluetoothPrintersModal onClose={() => setShowBluetoothPrinters(false)} />}
       {deletingOrder && (
         <DeleteConfirmModal
           title="Eliminar pedido"
@@ -2476,7 +2676,7 @@ export default function AdminDashboard() {
               </div>
               <RecentOrders
                 orders={filteredOrders}
-                onPrint={printComanda}
+                onPrint={handlePrintComanda}
                 onDelete={setDeletingOrder}
                 highlightOrderId={highlightOrderId}
               />

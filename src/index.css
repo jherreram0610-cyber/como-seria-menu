@@ -1314,7 +1314,6 @@ body {
   background: var(--gray-100);
 }
 
-/* La comanda (58mm) ya no se imprime ocultando el resto de esta página: se
-   abre en una ventana/pestaña aparte con su propio HTML+CSS autónomo
-   (ver buildComandaHtml en AdminDashboard.jsx) — más confiable entre
-   navegadores/móviles que el truco de ocultar todo lo demás con CSS. */
+/* La comanda (58mm) ya no se imprime con el diálogo del navegador ni
+   ocultando el resto de la página: se manda directo por Bluetooth (ESC/POS)
+   a la impresora térmica vinculada (ver src/blePrinter.js). */
