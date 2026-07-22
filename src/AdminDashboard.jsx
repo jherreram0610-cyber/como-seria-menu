@@ -1,5 +1,15 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import logoImg from "/logo.svg";
+import {
+  isBluetoothPrintingSupported,
+  getLinkedPrinters,
+  linkNewPrinter,
+  renamePrinter,
+  unlinkPrinter,
+  printToPrinter,
+  printToAllPrinters,
+  buildComandaEscPos,
+} from "./blePrinter.js";
 
 const fmt = (n) => "$" + n.toLocaleString("es-CO");
 const formatAdicion = (a, itemQty = 1) => {
@@ -789,6 +799,78 @@ function OrderDetail({ order }) {
   );
 }
 
+// Si no hay ninguna impresora Bluetooth vinculada, se comporta igual que
+// antes (un solo clic, imprime con el sistema). Si hay una o más, abre un
+// menú para elegir a cuál mandar la comanda (o a todas a la vez).
+function PrintButton({ order, onPrint }) {
+  const [open, setOpen] = useState(false);
+  const [menuPos, setMenuPos] = useState(null);
+  const btnRef = useRef(null);
+  const printers = getLinkedPrinters();
+
+  if (printers.length === 0) {
+    return (
+      <button
+        className="adm-order-print-btn"
+        title="Vincula una impresora Bluetooth primero"
+        onClick={(e) => { e.stopPropagation(); onPrint(order, "none"); }}
+      >
+        <IconPrinter />
+      </button>
+    );
+  }
+
+  // El menú se posiciona "fixed" con las coordenadas del botón en vez de
+  // "absolute" dentro de la fila del pedido: la lista de pedidos recorta
+  // (overflow: hidden) cualquier cosa que se salga de una fila, así que un
+  // menú "absolute" quedaba tapado por los pedidos de abajo.
+  const toggleOpen = () => {
+    if (!open && btnRef.current) {
+      const rect = btnRef.current.getBoundingClientRect();
+      setMenuPos({ top: rect.bottom + 6, right: window.innerWidth - rect.right });
+    }
+    setOpen((v) => !v);
+  };
+
+  return (
+    <div onClick={(e) => e.stopPropagation()}>
+      <button ref={btnRef} className="adm-order-print-btn" title="Elegir impresora" onClick={toggleOpen}>
+        <IconPrinter />
+      </button>
+      {open && menuPos && (
+        <>
+          <div className="adm-dropdown-catcher" onClick={() => setOpen(false)} />
+          <div className="adm-profile-dropdown" style={{ position: "fixed", top: menuPos.top, right: menuPos.right }}>
+            {printers.map((p) => (
+              <div key={p.id} style={{ display: "flex", alignItems: "center" }}>
+                <button style={{ flex: 1 }} onClick={() => { setOpen(false); onPrint(order, p.id); }}>
+                  🖨️ {p.label}
+                </button>
+                <button
+                  title="Reconectar esta impresora (si dio error de permiso) y mandarle la comanda"
+                  onClick={async (e) => {
+                    e.stopPropagation();
+                    try {
+                      await linkNewPrinter(p.label);
+                      setOpen(false);
+                      onPrint(order, p.id);
+                    } catch {
+                      // el usuario canceló el selector, o falló — se queda el menú abierto
+                    }
+                  }}
+                >
+                  🔄
+                </button>
+              </div>
+            ))}
+            <button onClick={() => { setOpen(false); onPrint(order, "all"); }}>📠 Todas</button>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
 // ─── RECENT ORDERS ─────────────────────────────────────────────────────────
 function RecentOrders({ orders, onPrint, onDelete, highlightOrderId }) {
   const [expandedId, setExpandedId] = useState(null);
@@ -845,13 +927,7 @@ function RecentOrders({ orders, onPrint, onDelete, highlightOrderId }) {
                 </div>
               </div>
               <div className="adm-order-right">
-                <button
-                  className="adm-order-print-btn"
-                  title="Imprimir comanda"
-                  onClick={(e) => { e.stopPropagation(); onPrint(o); }}
-                >
-                  <IconPrinter />
-                </button>
+                <PrintButton order={o} onPrint={onPrint} />
                 <button
                   className="adm-order-delete-btn"
                   title="Eliminar pedido"
@@ -869,145 +945,6 @@ function RecentOrders({ orders, onPrint, onDelete, highlightOrderId }) {
       })}
     </div>
   );
-}
-
-// ─── COMANDA DE IMPRESIÓN (58mm) ────────────────────────────────────────────
-// Se imprime abriendo una pestaña/ventana aparte que SOLO contiene la comanda,
-// en vez de "ocultar todo lo demás" con CSS sobre la misma página — ese truco
-// (position/visibility) resultó poco confiable en el motor de impresión de
-// Chrome para Android (salía en blanco), así que esto evita el problema de raíz.
-function escapeHtml(value) {
-  return String(value ?? "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function buildComandaHtml(order) {
-  const itemsHtml = order.products.map((item) => {
-    const lines = [
-      `<div class="comanda-item-top"><span>${item.qty} x ${escapeHtml(item.name)}</span><span>${fmt((item.totalPrice ?? 0) * (item.qty || 1))}</span></div>`,
-    ];
-    if (item.removedIngredients?.length > 0) lines.push(`<div>Sin: ${escapeHtml(item.removedIngredients.join(", "))}</div>`);
-    if (item.bebida) lines.push(`<div>Bebida: ${escapeHtml(item.bebida.name)}</div>`);
-    if (item.side) lines.push(`<div>${escapeHtml(item.side.name)}</div>`);
-    if (item.adiciones?.length > 0) {
-      item.adiciones.forEach((a) => lines.push(`<div>+ ${escapeHtml(formatAdicion(a, item.qty))}</div>`));
-    }
-    if (item.agrandarPapas) lines.push(`<div>Papas grandes</div>`);
-    if (item.comment) lines.push(`<div>Nota: ${escapeHtml(item.comment)}</div>`);
-    return `<div class="comanda-item">${lines.join("")}</div>`;
-  }).join("");
-
-  const addressHtml = order.deliveryType === "domicilio" && order.deliveryAddress
-    ? `<div class="comanda-address"><div class="comanda-address-label">DIRECCIÓN</div>${escapeHtml(order.deliveryAddress)}</div>`
-    : "";
-  const deliveryFeeHtml = order.deliveryFee > 0
-    ? `<div class="comanda-item-top"><span>Domicilio</span><span>${fmt(order.deliveryFee)}</span></div>`
-    : "";
-  const paymentHtml = order.paymentMethod
-    ? `<div>Pago: ${escapeHtml(PAYMENT_LABELS[order.paymentMethod] || order.paymentMethod)}</div>`
-    : "";
-  const deliveryLineHtml = order.deliveryType === "domicilio"
-    ? `Domicilio: ${escapeHtml(order.deliveryLocation || "")}`
-    : "Para recoger en tienda";
-
-  return `<!doctype html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>Comanda</title>
-<style>
-  * { margin: 0; padding: 0; box-sizing: border-box; }
-  body {
-    width: 58mm; font-family: 'Courier New', monospace; font-size: 11px;
-    color: #000; background: #fff; line-height: 1.4;
-  }
-  .comanda-center { text-align: center; }
-  .comanda-banner {
-    text-align: center; font-size: 14px; font-weight: 700; letter-spacing: 1px;
-    border-top: 3px double #000; border-bottom: 3px double #000;
-    padding: 4px 0; margin-bottom: 6px;
-  }
-  .comanda-title { font-size: 15px; font-weight: 700; }
-  .comanda-line { border-top: 1px dashed #000; margin: 6px 0; }
-  .comanda-item { margin-bottom: 4px; }
-  .comanda-item-top { display: flex; justify-content: space-between; gap: 8px; font-weight: 700; }
-  .comanda-total { font-size: 13px; }
-  .comanda-address {
-    font-weight: 700; font-size: 13px; border: 1.5px solid #000; border-radius: 3px;
-    padding: 5px 6px; margin: 5px 0; line-height: 1.3;
-  }
-  .comanda-address-label { font-size: 9px; letter-spacing: 0.5px; margin-bottom: 2px; }
-  @page { size: 58mm auto; margin: 2mm; }
-</style>
-</head>
-<body>
-  <div class="comanda-banner">APP DOMICILIOS</div>
-  <div class="comanda-center comanda-title">CÓMO SERÍA</div>
-  <div class="comanda-center">COMANDA</div>
-  <div class="comanda-line"></div>
-  <div>Cliente: ${escapeHtml(order.customerName)}</div>
-  <div>${escapeHtml(order.date)} · ${escapeHtml(order.time)}</div>
-  <div class="comanda-line"></div>
-  ${itemsHtml}
-  <div class="comanda-line"></div>
-  <div>${deliveryLineHtml}</div>
-  ${addressHtml}
-  ${paymentHtml}
-  <div class="comanda-line"></div>
-  <div class="comanda-item-top"><span>Subtotal</span><span>${fmt(order.subtotal)}</span></div>
-  ${deliveryFeeHtml}
-  <div class="comanda-item-top comanda-total"><span>TOTAL</span><span>${fmt(order.total)}</span></div>
-  <div class="comanda-line"></div>
-  <div class="comanda-center">¡Gracias por tu pedido!</div>
-</body>
-</html>`;
-}
-
-function printComanda(order) {
-  // Un iframe oculto dentro de la misma página es más confiable en Android
-  // que abrir una pestaña nueva (window.open) — evitar el cambio de pestaña
-  // parece ser justo lo que fallaba ahí ("se ha producido un problema al
-  // imprimir la página").
-  // Con ancho/alto en 0 algunos navegadores de escritorio (Chrome en PC) no
-  // llegan a renderizar el contenido del iframe y terminan imprimiendo la
-  // página principal en su lugar (por eso salía en blanco con el encabezado
-  // de la URL). Con un tamaño real, aunque quede fuera de pantalla, el
-  // contenido sí se renderiza y el iframe se imprime correctamente.
-  const iframe = document.createElement("iframe");
-  iframe.style.position = "fixed";
-  iframe.style.top = "-10000px";
-  iframe.style.left = "-10000px";
-  iframe.style.width = "302px";
-  iframe.style.height = "400px";
-  iframe.style.border = "0";
-
-  const cleanup = () => {
-    if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
-  };
-
-  iframe.onload = () => {
-    try {
-      iframe.contentWindow.focus();
-      iframe.contentWindow.addEventListener("afterprint", cleanup);
-      iframe.contentWindow.print();
-    } catch {
-      cleanup();
-      return;
-    }
-    // "afterprint" no siempre se dispara (por ejemplo al elegir una app
-    // puente como RawBT, que sigue procesando el trabajo de impresión por
-    // su cuenta después de que el navegador cree haber terminado). Si se
-    // borra el iframe demasiado pronto, esas apps terminan capturando la
-    // página normal en su lugar en vez del ticket. Por eso el respaldo por
-    // tiempo es bastante generoso.
-    setTimeout(cleanup, 60000);
-  };
-
-  document.body.appendChild(iframe);
-  iframe.srcdoc = buildComandaHtml(order);
 }
 
 // ─── FORMULARIO DE PRODUCTO ────────────────────────────────────────────────
@@ -1693,6 +1630,137 @@ function ChangePasswordModal({ onClose }) {
   );
 }
 
+// ─── IMPRESORAS BLUETOOTH ───────────────────────────────────────────────────
+function BluetoothPrintersModal({ onClose }) {
+  const [printers, setPrinters] = useState(() => getLinkedPrinters());
+  const [newLabel, setNewLabel] = useState("");
+  const [linking, setLinking] = useState(false);
+  const [error, setError] = useState("");
+  const [editingId, setEditingId] = useState(null);
+  const [editingLabel, setEditingLabel] = useState("");
+  const supported = isBluetoothPrintingSupported();
+
+  const handleLink = async () => {
+    setError("");
+    setLinking(true);
+    try {
+      await linkNewPrinter(newLabel);
+      setNewLabel("");
+      setPrinters(getLinkedPrinters());
+    } catch (err) {
+      // El usuario cancelando el selector también cae acá (no es un error real)
+      if (err?.name !== "NotFoundError") {
+        setError(err.message || "No se pudo vincular la impresora");
+      }
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  const handleUnlink = (id) => {
+    unlinkPrinter(id);
+    setPrinters(getLinkedPrinters());
+  };
+
+  // Recupera la conexión sin tener que quitar la impresora y escribir la
+  // etiqueta de nuevo — pasa esto cuando sale "sin permiso persistente"
+  // (ej. después de recargar la página) o simplemente para refrescarla.
+  const handleReconnect = async (printer) => {
+    setError("");
+    setLinking(true);
+    try {
+      await linkNewPrinter(printer.label);
+      setPrinters(getLinkedPrinters());
+    } catch (err) {
+      if (err?.name !== "NotFoundError") {
+        setError(err.message || "No se pudo reconectar la impresora");
+      }
+    } finally {
+      setLinking(false);
+    }
+  };
+
+  const startEditing = (p) => {
+    setEditingId(p.id);
+    setEditingLabel(p.label);
+  };
+
+  const saveLabel = () => {
+    renamePrinter(editingId, editingLabel);
+    setPrinters(getLinkedPrinters());
+    setEditingId(null);
+  };
+
+  return (
+    <div className="adm-modal-overlay" onClick={onClose}>
+      <div className="adm-modal-card" onClick={(e) => e.stopPropagation()}>
+        <div className="adm-section-title">🖨️ Impresoras Bluetooth</div>
+        {!supported ? (
+          <p className="adm-form-error">
+            Este navegador no soporta impresión directa por Bluetooth. Prueba con Chrome o Brave en Android.
+          </p>
+        ) : (
+          <>
+            <p style={{ fontSize: "13px", opacity: 0.8, marginBottom: "12px" }}>
+              Cada impresora queda vinculada a este dispositivo/navegador (el Bluetooth es de corto alcance).
+              Ponle una etiqueta a cada una (ej. "Cocina", "Caja") — al imprimir una comanda podrás elegir a
+              cuál mandarla, o mandarla a todas a la vez.
+            </p>
+            {printers.length === 0 ? (
+              <p style={{ opacity: 0.7 }}>Todavía no has vinculado ninguna.</p>
+            ) : (
+              <ul style={{ listStyle: "none", padding: 0, margin: "0 0 12px" }}>
+                {printers.map((p) => (
+                  <li key={p.id} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "8px 0", borderBottom: "1px solid var(--border-color, #333)" }}>
+                    {editingId === p.id ? (
+                      <input
+                        type="text"
+                        value={editingLabel}
+                        autoFocus
+                        onChange={(e) => setEditingLabel(e.target.value)}
+                        onKeyDown={(e) => e.key === "Enter" && saveLabel()}
+                        onBlur={saveLabel}
+                        style={{ flex: 1, marginRight: "8px" }}
+                      />
+                    ) : (
+                      <span onClick={() => startEditing(p)} style={{ cursor: "pointer" }} title="Clic para renombrar">
+                        🖨️ {p.label} <small style={{ opacity: 0.6 }}>({p.name})</small>
+                      </span>
+                    )}
+                    <div style={{ display: "flex", gap: "6px" }}>
+                      <button type="button" className="adm-btn-ghost" onClick={() => handleReconnect(p)} disabled={linking} title="Si sale 'sin permiso persistente', dale acá">
+                        🔄 Reconectar
+                      </button>
+                      <button type="button" className="adm-btn-ghost" onClick={() => handleUnlink(p.id)}>Quitar</button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
+            {error && <p className="adm-form-error">{error}</p>}
+            <div className="adm-product-form" style={{ marginBottom: "8px" }}>
+              <label htmlFor="new-printer-label">Etiqueta para la nueva impresora</label>
+              <input
+                id="new-printer-label"
+                type="text"
+                placeholder="ej. Cocina"
+                value={newLabel}
+                onChange={(e) => setNewLabel(e.target.value)}
+              />
+            </div>
+            <div className="adm-form-actions">
+              <button type="button" className="adm-btn-ghost" onClick={onClose}>Cerrar</button>
+              <button type="button" className="adm-btn-primary" onClick={handleLink} disabled={linking}>
+                {linking ? <><span className="adm-btn-spinner" /> Buscando...</> : "+ Vincular impresora"}
+              </button>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── CAMBIAR PIN DE ELIMINACIÓN ─────────────────────────────────────────────
 function ChangeDeletePinModal({ onClose }) {
   const [currentPin, setCurrentPin] = useState("");
@@ -1842,9 +1910,30 @@ export default function AdminDashboard() {
   }, [theme]);
 
   const [toast, setToast] = useState(null);
-  const showToast = (msg) => {
+  const showToast = (msg, duration = 2200) => {
     setToast(msg);
-    setTimeout(() => setToast(null), 2200);
+    setTimeout(() => setToast(null), duration);
+  };
+
+  // target: id de una impresora vinculada, "all" (todas las vinculadas), o
+  // "none" (no hay ninguna vinculada todavía).
+  const handlePrintComanda = async (order, target) => {
+    if (target === "none") {
+      showToast("⚠ Primero vincula o sincroniza una impresora (Perfil → Impresoras Bluetooth)", 5000);
+      return;
+    }
+    const bytes = buildComandaEscPos(order);
+    try {
+      if (target === "all") {
+        const results = await printToAllPrinters(bytes);
+        showToast(results.map((r) => `${r.ok ? "✓" : "⚠"} ${r.label}`).join(" · "), 5000);
+      } else {
+        await printToPrinter(target, bytes);
+        showToast("✓ Comanda enviada a la impresora");
+      }
+    } catch (err) {
+      showToast(`⚠ No se pudo imprimir: ${err.message}`, 5000);
+    }
   };
 
   // Botón flotante "volver arriba" — aparece cuando ya se hizo bastante scroll,
@@ -1868,6 +1957,7 @@ export default function AdminDashboard() {
   const [categories, setCategories] = useState([]);
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showChangeDeletePin, setShowChangeDeletePin] = useState(false);
+  const [showBluetoothPrinters, setShowBluetoothPrinters] = useState(false);
   const [showProfileMenu, setShowProfileMenu] = useState(false);
   const [logoError, setLogoError] = useState(false);
   const [deletingOrder, setDeletingOrder] = useState(null);
@@ -2391,6 +2481,9 @@ export default function AdminDashboard() {
                     <button onClick={() => { setShowChangeDeletePin(true); setShowProfileMenu(false); }}>
                       🗑️ Cambiar clave de eliminación
                     </button>
+                    <button onClick={() => { setShowBluetoothPrinters(true); setShowProfileMenu(false); }}>
+                      🖨️ Impresoras Bluetooth
+                    </button>
                   </div>
                 </>
               )}
@@ -2403,6 +2496,7 @@ export default function AdminDashboard() {
 
       {showChangePassword && <ChangePasswordModal onClose={() => setShowChangePassword(false)} />}
       {showChangeDeletePin && <ChangeDeletePinModal onClose={() => setShowChangeDeletePin(false)} />}
+      {showBluetoothPrinters && <BluetoothPrintersModal onClose={() => setShowBluetoothPrinters(false)} />}
       {deletingOrder && (
         <DeleteConfirmModal
           title="Eliminar pedido"
@@ -2582,7 +2676,7 @@ export default function AdminDashboard() {
               </div>
               <RecentOrders
                 orders={filteredOrders}
-                onPrint={printComanda}
+                onPrint={handlePrintComanda}
                 onDelete={setDeletingOrder}
                 highlightOrderId={highlightOrderId}
               />
