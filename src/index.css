@@ -568,17 +568,36 @@ body {
 
 /* ─── BURGER IMAGE IN CARD ─── */
 .bm-burger-img-wrap {
+  /* El recuadro se queda en un tamaño fijo razonable — el encuadre (qué
+     parte de la foto se ve) se ajusta manualmente desde el panel de admin
+     con el editor de posición, no agrandando este recuadro. */
   width: 100%; border-radius: var(--radius-sm); overflow: hidden;
   margin: 8px 0; height: 180px; background: #0D0D0D;
 }
-.bm-burger-img { width: 100%; height: 100%; object-fit: contain; display: block; }
 
 /* ─── BURGER IMAGE IN MODAL ─── */
 .modal-burger-img-wrap {
   width: 100%; border-radius: var(--radius-sm); overflow: hidden; margin-bottom: 16px;
   height: 220px; background: #0D0D0D;
 }
-.modal-burger-img { width: 100%; height: 100%; object-fit: contain; display: block; }
+.modal-burger-img-wrap-clickable { cursor: zoom-in; }
+
+/* ─── ZOOM DE IMAGEN DEL PRODUCTO ─── */
+.image-zoom-overlay {
+  position: fixed; inset: 0; z-index: 300; background: rgba(0, 0, 0, 0.9);
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+  cursor: zoom-out;
+}
+.image-zoom-img {
+  max-width: 100%; max-height: 100%; object-fit: contain; border-radius: var(--radius-sm);
+  cursor: default;
+}
+.image-zoom-close {
+  position: fixed; top: 20px; right: 20px; width: 40px; height: 40px; border-radius: 50%;
+  border: none; background: rgba(255, 255, 255, 0.15); color: #fff; display: flex;
+  align-items: center; justify-content: center; cursor: pointer; z-index: 301;
+}
+.image-zoom-close:hover { background: rgba(255, 255, 255, 0.25); }
 
 /* ─── BURGER MASTER 2026 CARD ─── */
 .bm-card {
@@ -1161,8 +1180,29 @@ body {
   to { opacity: 1; transform: translateX(-50%) translateY(0); }
 }
 .adm-image-hint { font-size: 12px; color: var(--adm-text-dim); }
-.adm-image-preview-wrap { display: flex; align-items: center; gap: 12px; margin-top: 8px; }
-.adm-image-preview { width: 90px; height: 90px; object-fit: cover; border-radius: 12px; border: 1.5px solid var(--adm-border-light); }
+.adm-image-preview-wrap { display: flex; flex-direction: column; align-items: flex-start; gap: 10px; margin-top: 8px; }
+
+/* 448px = ancho máximo real de la tarjeta del menú público (.app tiene
+   max-width 480px, menos los 16px de padding del product-card a cada lado)
+   — mismo ancho y alto que .bm-burger-img-wrap para que el encuadre que se
+   ve acá sea igual al que va a ver el cliente, sin tener que ir a revisar. */
+.adm-image-positioner-wrap { display: flex; flex-direction: column; gap: 10px; width: 448px; max-width: 100%; }
+
+.adm-image-positioner {
+  position: relative; width: 100%; height: 180px; border-radius: 12px;
+  overflow: hidden; border: 1.5px solid var(--adm-border-light); background: #0D0D0D;
+  cursor: grab; touch-action: none;
+}
+.adm-image-positioner:active { cursor: grabbing; }
+.adm-image-positioner-hint {
+  position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%);
+  background: rgba(0, 0, 0, 0.6); color: #fff; font-size: 11px; padding: 3px 8px;
+  border-radius: 20px; pointer-events: none; white-space: nowrap;
+}
+.adm-image-zoom-slider {
+  display: flex; align-items: center; gap: 8px; font-size: 15px; color: var(--adm-text-dim);
+}
+.adm-image-zoom-slider input[type="range"] { flex: 1; }
 
 /* ─── MENU LOADING (menú público) ─── */
 .menu-loading {

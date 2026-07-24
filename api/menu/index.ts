@@ -18,6 +18,7 @@ interface CreateBody {
   special?: boolean;
   isBurgerMaster?: boolean;
   burgerImg?: string;
+  burgerImgPosition?: string;
 }
 
 const MAX_BURGER_IMG_LENGTH = 1_500_000; // ~1.1MB de imagen ya en base64
@@ -76,8 +77,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const { rows } = await query(
       `insert into menu_items
-        (id, category, name, price, description, ingredients, burger, combo_extra, allow_customization, is_new, popular, special, is_burger_master, burger_img, sort_order)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        (id, category, name, price, description, ingredients, burger, combo_extra, allow_customization, is_new, popular, special, is_burger_master, burger_img, burger_img_position, sort_order)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
        returning *`,
       [
         id,
@@ -94,6 +95,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         !!body.special,
         !!body.isBurgerMaster,
         body.burgerImg || null,
+        body.burgerImgPosition || "50% 50%",
         sortOrder,
       ]
     );

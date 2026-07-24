@@ -115,3 +115,8 @@ create table if not exists push_subscriptions (
   auth        text not null,
   created_at  timestamptz not null default now()
 );
+
+-- Posición de encuadre de la foto del producto (valor CSS object-position,
+-- ej. "50% 50%"): permite reposicionar sin recortar el archivo, para que se
+-- vea la parte deseada de la foto dentro del recuadro fijo del menú.
+alter table menu_items add column if not exists burger_img_position text not null default '50% 50%';

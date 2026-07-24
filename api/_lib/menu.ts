@@ -18,6 +18,7 @@ export interface MenuItemRow {
   special: boolean;
   is_burger_master: boolean;
   burger_img: string | null;
+  burger_img_position: string | null;
   sort_order: number;
   is_active: boolean;
 }
@@ -40,6 +41,7 @@ export function rowToItem(row: MenuItemRow) {
   if (row.special) item.special = true;
   if (row.is_burger_master) item.isBurgerMaster = true;
   if (row.burger_img) item.burgerImg = row.burger_img;
+  item.burgerImgPosition = row.burger_img_position || "50% 50%";
   return item;
 }
 
