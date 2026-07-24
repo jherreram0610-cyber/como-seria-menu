@@ -1,6 +1,8 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import logoImg from "/logo.svg";
 import AdminDashboard from "./AdminDashboard";
+import { parseFramePosition } from "./framePosition.js";
+import { PositionedImage } from "./imagePosition.jsx";
 
 // ─── ROUTING ─────────────────────────────────────────────────────────────────
 if (window.location.pathname === "/admin") {
@@ -72,6 +74,7 @@ export default function ComoSeriaMenu() {
   const [activeCategory, setActiveCategory] = useState("hamburguesas");
   const [cart, setCart] = useState([]);
   const [modalItem, setModalItem] = useState(null);
+  const [zoomedImage, setZoomedImage] = useState(null);
   const [showCart, setShowCart] = useState(false);
   const [toast, setToast] = useState(null);
   const [customerName, setCustomerName] = useState("");
@@ -641,10 +644,13 @@ export default function ComoSeriaMenu() {
                       <span className="bm-badge">🎉 EDICIÓN ESPECIAL</span>
                     </div>
                   )}
-                  {isSpecial && item.burgerImg && (
-                    <div className="bm-burger-img-wrap">
-                      <img src={item.burgerImg} alt={item.name} className="bm-burger-img" />
-                    </div>
+                  {item.burgerImg && (
+                    <PositionedImage
+                      src={item.burgerImg}
+                      alt={item.name}
+                      className="bm-burger-img-wrap"
+                      {...parseFramePosition(item.burgerImgPosition)}
+                    />
                   )}
                   <div className="product-top">
                     <div className="product-info">
@@ -750,11 +756,15 @@ export default function ComoSeriaMenu() {
             </div>
             <div className="modal-body">
 
-              {/* Imagen de la hamburguesa en modal */}
+              {/* Imagen de la hamburguesa en modal — clic para verla en grande */}
               {modalItem.burgerImg && (
-                <div className="modal-burger-img-wrap">
-                  <img src={modalItem.burgerImg} alt={modalItem.name} className="modal-burger-img" />
-                </div>
+                <PositionedImage
+                  src={modalItem.burgerImg}
+                  alt={modalItem.name}
+                  className="modal-burger-img-wrap modal-burger-img-wrap-clickable"
+                  onClick={() => setZoomedImage({ src: modalItem.burgerImg, alt: modalItem.name })}
+                  {...parseFramePosition(modalItem.burgerImgPosition)}
+                />
               )}
 
               {/* Ingredientes — solo si allowCustomization no es false */}
@@ -921,6 +931,14 @@ export default function ComoSeriaMenu() {
               </button>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ─── ZOOM DE IMAGEN DEL PRODUCTO ─── */}
+      {zoomedImage && (
+        <div className="image-zoom-overlay" onClick={() => setZoomedImage(null)}>
+          <button className="image-zoom-close" onClick={() => setZoomedImage(null)}><IconX /></button>
+          <img src={zoomedImage.src} alt={zoomedImage.alt} className="image-zoom-img" onClick={(e) => e.stopPropagation()} />
         </div>
       )}
 

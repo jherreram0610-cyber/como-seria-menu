@@ -15,6 +15,7 @@ interface UpdateBody {
   special?: boolean;
   isBurgerMaster?: boolean;
   burgerImg?: string | null;
+  burgerImgPosition?: string | null;
 }
 
 const MAX_BURGER_IMG_LENGTH = 1_500_000; // ~1.1MB de imagen ya en base64
@@ -32,6 +33,7 @@ const FIELD_MAP: Record<keyof UpdateBody, string> = {
   special: "special",
   isBurgerMaster: "is_burger_master",
   burgerImg: "burger_img",
+  burgerImgPosition: "burger_img_position",
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {

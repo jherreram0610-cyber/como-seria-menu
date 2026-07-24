@@ -10,6 +10,8 @@ import {
   printToAllPrinters,
   buildComandaEscPos,
 } from "./blePrinter.js";
+import { parseFramePosition, serializeFramePosition } from "./framePosition.js";
+import { ImageFrameEditor } from "./imagePosition.jsx";
 
 const fmt = (n) => "$" + n.toLocaleString("es-CO");
 const formatAdicion = (a, itemQty = 1) => {
@@ -947,6 +949,7 @@ function RecentOrders({ orders, onPrint, onDelete, highlightOrderId }) {
   );
 }
 
+
 // ─── FORMULARIO DE PRODUCTO ────────────────────────────────────────────────
 function ProductForm({ initial, categories, onSubmit, onCancel }) {
   const isEditing = !!initial?.id;
@@ -962,6 +965,7 @@ function ProductForm({ initial, categories, onSubmit, onCancel }) {
   const [popular, setPopular] = useState(!!initial?.popular);
   const [specialEdition, setSpecialEdition] = useState(!!initial?.special || !!initial?.isBurgerMaster);
   const [burgerImg, setBurgerImg] = useState(initial?.burgerImg || null);
+  const [imgPosition, setImgPosition] = useState(() => parseFramePosition(initial?.burgerImgPosition));
   const [imageBusy, setImageBusy] = useState(false);
   const [imageError, setImageError] = useState("");
   const [saving, setSaving] = useState(false);
@@ -976,6 +980,7 @@ function ProductForm({ initial, categories, onSubmit, onCancel }) {
     try {
       const dataUrl = await resizeImageToDataUrl(file);
       setBurgerImg(dataUrl);
+      setImgPosition({ x: 50, y: 50, zoom: 1 }); // foto nueva: arranca centrada/sin zoom, no con el encuadre de la anterior
     } catch {
       setImageError("No se pudo procesar la imagen. Intenta con otra.");
     } finally {
@@ -1004,7 +1009,8 @@ function ProductForm({ initial, categories, onSubmit, onCancel }) {
         isNew,
         popular,
         special: specialEdition,
-        burgerImg: specialEdition ? burgerImg : null,
+        burgerImg,
+        burgerImgPosition: burgerImg ? serializeFramePosition(imgPosition) : null,
       });
     } catch (err) {
       setError(err.message || "No se pudo guardar");
@@ -1065,23 +1071,21 @@ function ProductForm({ initial, categories, onSubmit, onCancel }) {
         </label>
         <label className="adm-form-check">
           <input type="checkbox" checked={specialEdition} onChange={(e) => setSpecialEdition(e.target.checked)} />
-          Edición especial (destacada con foto, como "Cali Vibes")
+          Edición especial (destacada con banner, como "Cali Vibes")
         </label>
       </div>
-      {specialEdition && (
-        <div className="adm-form-field">
-          Foto del producto
-          <input type="file" accept="image/*" onChange={handleImageChange} />
-          {imageBusy && <p className="adm-image-hint">Procesando imagen...</p>}
-          {imageError && <p className="adm-form-error">{imageError}</p>}
-          {burgerImg && (
-            <div className="adm-image-preview-wrap">
-              <img src={burgerImg} alt="Vista previa" className="adm-image-preview" />
-              <button type="button" className="adm-btn-ghost adm-btn-sm" onClick={() => setBurgerImg(null)}>Quitar imagen</button>
-            </div>
-          )}
-        </div>
-      )}
+      <div className="adm-form-field">
+        Foto del producto (opcional)
+        <input type="file" accept="image/*" onChange={handleImageChange} />
+        {imageBusy && <p className="adm-image-hint">Procesando imagen...</p>}
+        {imageError && <p className="adm-form-error">{imageError}</p>}
+        {burgerImg && (
+          <div className="adm-image-preview-wrap">
+            <ImageFrameEditor src={burgerImg} x={imgPosition.x} y={imgPosition.y} zoom={imgPosition.zoom} onChange={setImgPosition} />
+            <button type="button" className="adm-btn-ghost adm-btn-sm" onClick={() => setBurgerImg(null)}>Quitar imagen</button>
+          </div>
+        )}
+      </div>
       {error && <p className="adm-form-error">{error}</p>}
       <div className="adm-form-actions">
         <button type="button" className="adm-btn-ghost" onClick={onCancel}>Cancelar</button>
