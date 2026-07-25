@@ -1462,6 +1462,26 @@ function PaymentMethodsManager({ paymentMethods, reload }) {
     }
   };
 
+  const move = async (index, direction) => {
+    const other = index + direction;
+    if (other < 0 || other >= paymentMethods.length) return;
+    const a = paymentMethods[index];
+    const b = paymentMethods[other];
+    setBusyId(a.id);
+    setError("");
+    try {
+      await Promise.all([
+        api(`/api/payment-methods/${a.id}`, { method: "PUT", body: JSON.stringify({ sortOrder: other }) }),
+        api(`/api/payment-methods/${b.id}`, { method: "PUT", body: JSON.stringify({ sortOrder: index }) }),
+      ]);
+      reload();
+    } catch (err) {
+      setError(err.message || "No se pudo reordenar");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
   return (
     <>
       {editingItem ? (
@@ -1481,7 +1501,7 @@ function PaymentMethodsManager({ paymentMethods, reload }) {
           </div>
           {error && <p className="adm-form-error">{error}</p>}
           {paymentMethods.length === 0 && <p className="adm-menu-empty">Sin métodos de pago.</p>}
-          {paymentMethods.map((method) => (
+          {paymentMethods.map((method, i) => (
             <div key={method.id} className={`adm-menu-row ${method.isActive === false ? "inactive" : ""}`}>
               <div className="adm-menu-row-info">
                 <div className="adm-menu-row-name">
@@ -1495,6 +1515,18 @@ function PaymentMethodsManager({ paymentMethods, reload }) {
                 )}
               </div>
               <div className="adm-menu-row-actions">
+                <button
+                  className="adm-btn-ghost adm-btn-sm"
+                  disabled={i === 0 || busyId === method.id}
+                  onClick={() => move(i, -1)}
+                  title="Subir"
+                >↑</button>
+                <button
+                  className="adm-btn-ghost adm-btn-sm"
+                  disabled={i === paymentMethods.length - 1 || busyId === method.id}
+                  onClick={() => move(i, 1)}
+                  title="Bajar"
+                >↓</button>
                 <button className="adm-btn-ghost adm-btn-sm" onClick={() => setEditingItem(method)}>Editar</button>
                 <button className="adm-btn-ghost adm-btn-sm" disabled={busyId === method.id} onClick={() => toggleActive(method)}>
                   {method.isActive === false ? "Activar" : "Desactivar"}

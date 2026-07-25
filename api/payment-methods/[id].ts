@@ -10,6 +10,7 @@ interface Account {
 interface UpdateBody {
   label?: string;
   accounts?: Account[];
+  sortOrder?: number;
 }
 
 function validateAccounts(accounts: unknown): accounts is Account[] {
@@ -47,6 +48,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
       values.push(JSON.stringify(body.accounts));
       sets.push(`accounts = $${values.length}`);
+    }
+    if (typeof body.sortOrder === "number") {
+      values.push(body.sortOrder);
+      sets.push(`sort_order = $${values.length}`);
     }
 
     if (sets.length === 0) {
