@@ -117,7 +117,10 @@ async function api(path, options) {
   return res.json();
 }
 
-const PAYMENT_LABELS = { "qr-bold": "QR de Bold", nequi: "Nequi", transferencia: "Transferencia" };
+// Respaldo para pedidos viejos cuyo método de pago ya no exista/se haya
+// renombrado en la tabla payment_methods — normalmente los labels reales
+// vienen del backend (ver paymentLabels en el componente principal).
+const FALLBACK_PAYMENT_LABELS = { "qr-bold": "QR de Bold", nequi: "Nequi", transferencia: "Transferencia" };
 const KNOWN_ORDER_IDS_KEY = "cs-admin-known-order-ids";
 const RANK_MEDALS = ["🥇", "🥈", "🥉"];
 const rankBadge = (i) => RANK_MEDALS[i] || `#${i + 1}`;
@@ -376,7 +379,7 @@ async function exportPDF(orders, rangeLabel = getTodayKey()) {
 }
 
 // ─── EXPORTS DEL RESUMEN (agregado: top productos, métodos de pago, domicilios) ──
-function buildSummaryReport(filteredOrders, productRanking, paymentBreakdown, deliveryBreakdown) {
+function buildSummaryReport(filteredOrders, productRanking, paymentBreakdown, deliveryBreakdown, paymentLabels) {
   const totalRevenue = filteredOrders.reduce((s, o) => s + o.total, 0);
   const avg = filteredOrders.length > 0 ? Math.round(totalRevenue / filteredOrders.length) : 0;
   return {
@@ -387,7 +390,7 @@ function buildSummaryReport(filteredOrders, productRanking, paymentBreakdown, de
       { Métrica: "Promedio por pedido", Valor: fmt(avg) },
     ],
     products: productRanking.map((p, i) => ({ "#": i + 1, Producto: p.name, Cantidad: p.qty, Total: fmt(p.total) })),
-    payments: paymentBreakdown.map((p) => ({ Método: PAYMENT_LABELS[p.method] || p.method, Pedidos: p.count, Total: fmt(p.total) })),
+    payments: paymentBreakdown.map((p) => ({ Método: paymentLabels[p.method] || p.method, Pedidos: p.count, Total: fmt(p.total) })),
     delivery: [
       { Tipo: "Para recoger", Pedidos: deliveryBreakdown.recogerCount, Total: fmt(deliveryBreakdown.recogerTotal) },
       { Tipo: "A domicilio", Pedidos: deliveryBreakdown.domicilioCount, Total: fmt(deliveryBreakdown.domicilioTotal) },
@@ -759,7 +762,7 @@ function TrendChart({ orders }) {
 }
 
 // ─── DETALLE DE UN PEDIDO ──────────────────────────────────────────────────
-function OrderDetail({ order }) {
+function OrderDetail({ order, paymentLabels }) {
   return (
     <div className="adm-order-detail">
       <div className="adm-order-detail-meta">
@@ -769,7 +772,7 @@ function OrderDetail({ order }) {
           <span>🏪 Para recoger en tienda</span>
         )}
         {order.paymentMethod && (
-          <span>💳 {PAYMENT_LABELS[order.paymentMethod] || order.paymentMethod}</span>
+          <span>💳 {paymentLabels[order.paymentMethod] || order.paymentMethod}</span>
         )}
       </div>
 
@@ -874,7 +877,7 @@ function PrintButton({ order, onPrint }) {
 }
 
 // ─── RECENT ORDERS ─────────────────────────────────────────────────────────
-function RecentOrders({ orders, onPrint, onDelete, highlightOrderId }) {
+function RecentOrders({ orders, onPrint, onDelete, highlightOrderId, paymentLabels }) {
   const [expandedId, setExpandedId] = useState(null);
   const [flashId, setFlashId] = useState(null);
   const [seenHighlight, setSeenHighlight] = useState(null);
@@ -941,7 +944,7 @@ function RecentOrders({ orders, onPrint, onDelete, highlightOrderId }) {
                 <span className="adm-order-chevron">{isOpen ? "▾" : "▸"}</span>
               </div>
             </div>
-            {isOpen && <OrderDetail order={o} />}
+            {isOpen && <OrderDetail order={o} paymentLabels={paymentLabels} />}
           </div>
         );
       })}
@@ -1331,6 +1334,223 @@ function DeliveryManager({ locations, reload }) {
             </div>
           ))}
         </div>
+      )}
+      {toast && <div className="adm-toast">✓ {toast}</div>}
+    </>
+  );
+}
+
+// ─── MÉTODOS DE PAGO ────────────────────────────────────────────────────────
+// Lista de datos para copiar de un método (ej. número de Nequi, llave Bre-B,
+// cuenta de ahorros) — un método puede no tener ninguno (ej. QR de Bold, que
+// se muestra físicamente), uno, o varios.
+function PaymentAccountsEditor({ accounts, onChange }) {
+  const updateAccount = (i, field, value) => {
+    onChange(accounts.map((a, idx) => (idx === i ? { ...a, [field]: value } : a)));
+  };
+  const removeAccount = (i) => {
+    onChange(accounts.filter((_, idx) => idx !== i));
+  };
+  const addAccount = () => {
+    onChange([...accounts, { label: "", value: "" }]);
+  };
+
+  return (
+    <div className="adm-form-field">
+      Datos para copiar (opcional)
+      {accounts.map((acc, i) => (
+        <div key={i} className="adm-payment-account-row">
+          <input
+            value={acc.label}
+            onChange={(e) => updateAccount(i, "label", e.target.value)}
+            placeholder="Ej: Llave Bre-B"
+          />
+          <input
+            value={acc.value}
+            onChange={(e) => updateAccount(i, "value", e.target.value)}
+            placeholder="Ej: 3243517902"
+          />
+          <button type="button" className="adm-btn-ghost adm-btn-sm" onClick={() => removeAccount(i)}>Quitar</button>
+        </div>
+      ))}
+      <button type="button" className="adm-btn-ghost adm-btn-sm" onClick={addAccount}>+ Agregar dato</button>
+    </div>
+  );
+}
+
+function PaymentMethodForm({ initial, onSubmit, onCancel }) {
+  const [label, setLabel] = useState(initial?.label || "");
+  const [accounts, setAccounts] = useState(initial?.accounts || []);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!label.trim()) {
+      setError("El nombre es obligatorio");
+      return;
+    }
+    const cleanAccounts = accounts
+      .map((a) => ({ label: a.label.trim(), value: a.value.trim() }))
+      .filter((a) => a.label && a.value);
+    setSaving(true);
+    setError("");
+    try {
+      await onSubmit({ label: label.trim(), accounts: cleanAccounts });
+    } catch (err) {
+      setError(err.message || "No se pudo guardar");
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form className="adm-product-form" onSubmit={submit}>
+      <label className="adm-form-field">
+        Nombre del método
+        <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="Ej: Nequi" />
+      </label>
+      <PaymentAccountsEditor accounts={accounts} onChange={setAccounts} />
+      {error && <p className="adm-form-error">{error}</p>}
+      <div className="adm-form-actions">
+        <button type="button" className="adm-btn-ghost" onClick={onCancel}>Cancelar</button>
+        <button type="submit" className="adm-btn-primary" disabled={saving}>
+          {saving ? <><span className="adm-btn-spinner" /> Guardando...</> : "Guardar"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function PaymentMethodsManager({ paymentMethods, reload }) {
+  const [editingItem, setEditingItem] = useState(null);
+  const [deletingItem, setDeletingItem] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+  const [error, setError] = useState("");
+  const [toast, setToast] = useState(null);
+
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2200);
+  };
+
+  const handleCreate = async (payload) => {
+    await api("/api/payment-methods", { method: "POST", body: JSON.stringify(payload) });
+    setEditingItem(null);
+    reload();
+    showToast("Método de pago creado");
+  };
+
+  const handleUpdate = async (id, payload) => {
+    await api(`/api/payment-methods/${id}`, { method: "PUT", body: JSON.stringify(payload) });
+    setEditingItem(null);
+    reload();
+    showToast("Método de pago actualizado");
+  };
+
+  const toggleActive = async (method) => {
+    setBusyId(method.id);
+    setError("");
+    try {
+      const willActivate = method.isActive === false;
+      await api(`/api/payment-methods/${method.id}`, { method: "PATCH", body: JSON.stringify({ isActive: willActivate }) });
+      reload();
+      showToast(willActivate ? "Método activado" : "Método desactivado");
+    } catch (err) {
+      setError(err.message || "No se pudo actualizar");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const move = async (index, direction) => {
+    const other = index + direction;
+    if (other < 0 || other >= paymentMethods.length) return;
+    const a = paymentMethods[index];
+    const b = paymentMethods[other];
+    setBusyId(a.id);
+    setError("");
+    try {
+      await Promise.all([
+        api(`/api/payment-methods/${a.id}`, { method: "PUT", body: JSON.stringify({ sortOrder: other }) }),
+        api(`/api/payment-methods/${b.id}`, { method: "PUT", body: JSON.stringify({ sortOrder: index }) }),
+      ]);
+      reload();
+    } catch (err) {
+      setError(err.message || "No se pudo reordenar");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <>
+      {editingItem ? (
+        <div className="adm-section">
+          <div className="adm-section-title">{editingItem.id ? `Editar: ${editingItem.label}` : "Nuevo método de pago"}</div>
+          <PaymentMethodForm
+            initial={editingItem.id ? editingItem : null}
+            onSubmit={(payload) => (editingItem.id ? handleUpdate(editingItem.id, payload) : handleCreate(payload))}
+            onCancel={() => setEditingItem(null)}
+          />
+        </div>
+      ) : (
+        <div className="adm-section">
+          <div className="adm-section-title">
+            Métodos de pago
+            <button className="adm-btn-primary adm-btn-sm" onClick={() => setEditingItem({})}>+ Nuevo método</button>
+          </div>
+          {error && <p className="adm-form-error">{error}</p>}
+          {paymentMethods.length === 0 && <p className="adm-menu-empty">Sin métodos de pago.</p>}
+          {paymentMethods.map((method, i) => (
+            <div key={method.id} className={`adm-menu-row ${method.isActive === false ? "inactive" : ""}`}>
+              <div className="adm-menu-row-info">
+                <div className="adm-menu-row-name">
+                  {method.label}
+                  {method.isActive === false && <span className="adm-inactive-tag">Desactivado</span>}
+                </div>
+                {method.accounts?.length > 0 && (
+                  <div className="adm-menu-row-price">
+                    {method.accounts.map((a) => `${a.label}: ${a.value}`).join(" · ")}
+                  </div>
+                )}
+              </div>
+              <div className="adm-menu-row-actions">
+                <button
+                  className="adm-btn-ghost adm-btn-sm"
+                  disabled={i === 0 || busyId === method.id}
+                  onClick={() => move(i, -1)}
+                  title="Subir"
+                >↑</button>
+                <button
+                  className="adm-btn-ghost adm-btn-sm"
+                  disabled={i === paymentMethods.length - 1 || busyId === method.id}
+                  onClick={() => move(i, 1)}
+                  title="Bajar"
+                >↓</button>
+                <button className="adm-btn-ghost adm-btn-sm" onClick={() => setEditingItem(method)}>Editar</button>
+                <button className="adm-btn-ghost adm-btn-sm" disabled={busyId === method.id} onClick={() => toggleActive(method)}>
+                  {method.isActive === false ? "Activar" : "Desactivar"}
+                </button>
+                <button className="adm-btn-ghost adm-btn-sm adm-btn-danger-ghost" onClick={() => setDeletingItem(method)}>
+                  Eliminar
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+      {deletingItem && (
+        <DeleteConfirmModal
+          title="Eliminar método de pago"
+          message={`¿Eliminar "${deletingItem.label}"? Esta acción no se puede deshacer.`}
+          onClose={() => setDeletingItem(null)}
+          onConfirm={async (pin) => {
+            await api(`/api/payment-methods/${deletingItem.id}`, { method: "DELETE", body: JSON.stringify({ pin }) });
+            setDeletingItem(null);
+            reload();
+            showToast("Método de pago eliminado");
+          }}
+        />
       )}
       {toast && <div className="adm-toast">✓ {toast}</div>}
     </>
@@ -1959,6 +2179,11 @@ export default function AdminDashboard() {
   const [menuData, setMenuData] = useState({});
   const [locations, setLocations] = useState([]);
   const [categories, setCategories] = useState([]);
+  const [paymentMethods, setPaymentMethods] = useState([]);
+  const paymentLabels = {
+    ...FALLBACK_PAYMENT_LABELS,
+    ...Object.fromEntries(paymentMethods.map((p) => [p.id, p.label])),
+  };
   const [showChangePassword, setShowChangePassword] = useState(false);
   const [showChangeDeletePin, setShowChangeDeletePin] = useState(false);
   const [showBluetoothPrinters, setShowBluetoothPrinters] = useState(false);
@@ -2275,15 +2500,20 @@ export default function AdminDashboard() {
     api("/api/categories?all=1").then((d) => setCategories(d.categories || [])).catch(() => {});
   }, []);
 
+  const loadPaymentMethods = useCallback(() => {
+    api("/api/payment-methods?all=1").then((d) => setPaymentMethods(d.paymentMethods || [])).catch(() => {});
+  }, []);
+
   useEffect(() => {
     if (authState !== "unlocked") return;
     loadOrders();
     loadMenu();
     loadLocations();
     loadCategories();
+    loadPaymentMethods();
     const interval = setInterval(loadOrders, 7000);
     return () => clearInterval(interval);
-  }, [authState, loadOrders, loadMenu, loadLocations, loadCategories]);
+  }, [authState, loadOrders, loadMenu, loadLocations, loadCategories, loadPaymentMethods]);
 
   const handlePin = async (e) => {
     e.preventDefault();
@@ -2374,7 +2604,7 @@ export default function AdminDashboard() {
   const productRanking = buildProductRanking(filteredOrders);
   const paymentBreakdown = buildPaymentBreakdown(filteredOrders);
   const deliveryBreakdown = buildDeliveryBreakdown(filteredOrders);
-  const summaryReport = buildSummaryReport(filteredOrders, productRanking, paymentBreakdown, deliveryBreakdown);
+  const summaryReport = buildSummaryReport(filteredOrders, productRanking, paymentBreakdown, deliveryBreakdown, paymentLabels);
 
   const handleExportSummaryPDF = async () => {
     setExportingSummaryPdf(true);
@@ -2518,13 +2748,13 @@ export default function AdminDashboard() {
       <main className="adm-main">
         {/* Tabs */}
         <div className="adm-tabs">
-          {["resumen", "pedidos", "menu", "categorias", "domicilios"].map((t) => (
+          {["resumen", "pedidos", "menu", "categorias", "domicilios", "pagos"].map((t) => (
             <button
               key={t}
               className={`adm-tab ${tab === t ? "active" : ""}`}
               onClick={() => setTab(t)}
             >
-              {t === "resumen" ? "📊 Resumen" : t === "pedidos" ? "📋 Pedidos" : t === "menu" ? "🍔 Menú" : t === "categorias" ? "🗂️ Categorías" : "🛵 Domicilios"}
+              {t === "resumen" ? "📊 Resumen" : t === "pedidos" ? "📋 Pedidos" : t === "menu" ? "🍔 Menú" : t === "categorias" ? "🗂️ Categorías" : t === "domicilios" ? "🛵 Domicilios" : "💳 Pagos"}
             </button>
           ))}
           <div className="adm-live-badge">
@@ -2620,7 +2850,7 @@ export default function AdminDashboard() {
                     <div key={p.method} className="adm-day-row">
                       <div className="adm-day-label">
                         <span className="adm-day-pos">#{i + 1}</span>
-                        {PAYMENT_LABELS[p.method] || p.method}
+                        {paymentLabels[p.method] || p.method}
                       </div>
                       <div className="adm-day-count">{p.count} {p.count === 1 ? "pedido" : "pedidos"}</div>
                       <div className="adm-day-total">{fmt(p.total)}</div>
@@ -2683,6 +2913,7 @@ export default function AdminDashboard() {
                 onPrint={handlePrintComanda}
                 onDelete={setDeletingOrder}
                 highlightOrderId={highlightOrderId}
+                paymentLabels={paymentLabels}
               />
             </div>
           </>
@@ -2693,6 +2924,8 @@ export default function AdminDashboard() {
         {tab === "categorias" && <CategoryManager categories={categories} reload={loadCategories} />}
 
         {tab === "domicilios" && <DeliveryManager locations={locations} reload={loadLocations} />}
+
+        {tab === "pagos" && <PaymentMethodsManager paymentMethods={paymentMethods} reload={loadPaymentMethods} />}
 
         {/* Info notice */}
         <div className="adm-notice">

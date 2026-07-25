@@ -120,3 +120,27 @@ create table if not exists push_subscriptions (
 -- ej. "50% 50%"): permite reposicionar sin recortar el archivo, para que se
 -- vea la parte deseada de la foto dentro del recuadro fijo del menú.
 alter table menu_items add column if not exists burger_img_position text not null default '50% 50%';
+
+-- Métodos de pago (antes fijos en código), editables desde el panel.
+-- "accounts" es la lista de datos para copiar que ve el cliente (ej. número
+-- de Nequi, llave Bre-B, cuenta de ahorros) — puede tener 0, 1 o varias.
+create table if not exists payment_methods (
+  id          text primary key,
+  label       text not null,
+  accounts    jsonb not null default '[]',
+  sort_order  integer not null default 0,
+  is_active   boolean not null default true,
+  is_deleted  boolean not null default false,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
+);
+
+-- Se siembran los 3 métodos que ya existían fijos en el código, con los
+-- mismos datos, para que nada cambie hasta que el admin edite algo.
+insert into payment_methods (id, label, accounts, sort_order) values
+  ('qr-bold', 'QR de Bold', '[]', 0),
+  ('nequi', 'Nequi', '[{"label":"Nequi","value":"3243517902"}]', 1),
+  ('transferencia', 'Transferencia', '[{"label":"Llave Bre-B","value":"3243517902"},{"label":"Ahorros Bancolombia","value":"74567092902"}]', 2)
+on conflict (id) do nothing;
+
+alter table payment_methods add column if not exists is_deleted boolean not null default false;
