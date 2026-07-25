@@ -31,20 +31,6 @@ const SIDES = [
   { id: "s3", name: "Aros de Cebolla", price: 1000 },
 ];
 
-const PAYMENT_METHODS = [
-  { id: "qr-bold", label: "QR de Bold" },
-  { id: "nequi", label: "Nequi" },
-  { id: "transferencia", label: "Transferencia" },
-];
-
-const PAYMENT_ACCOUNTS = {
-  nequi: [{ label: "Nequi", value: "3243517902" }],
-  transferencia: [
-    { label: "Llave Bre-B", value: "3243517902" },
-    { label: "Ahorros Bancolombia", value: "74567092902" },
-  ],
-};
-
 const fmt = (n) => "$" + n.toLocaleString("es-CO");
 const formatAdicion = (a, itemQty = 1) => {
   const total = a.qty * itemQty;
@@ -97,6 +83,7 @@ export default function ComoSeriaMenu() {
   const [DELIVERY_LOCATIONS, setDeliveryLocations] = useState([]);
   const [topProducts, setTopProducts] = useState({});
   const [categories, setCategories] = useState([]);
+  const [paymentMethods, setPaymentMethods] = useState([]);
 
   // Carga el menú, las zonas de domicilio, las categorías y el ranking semanal
   // de más pedidos. En la carga inicial muestra el spinner/error de pantalla
@@ -117,12 +104,14 @@ export default function ComoSeriaMenu() {
         return r.json();
       }),
       fetch("/api/top-products").then((r) => (r.ok ? r.json() : { top: [] })).catch(() => ({ top: [] })),
+      fetch("/api/payment-methods").then((r) => (r.ok ? r.json() : { paymentMethods: [] })).catch(() => ({ paymentMethods: [] })),
     ])
-      .then(([menuData, deliveryData, categoryData, topData]) => {
+      .then(([menuData, deliveryData, categoryData, topData, paymentData]) => {
         setMENU(menuData);
         setDeliveryLocations(deliveryData.locations || []);
         setCategories(categoryData.categories || []);
         setTopProducts(Object.fromEntries((topData.top || []).map((t) => [t.id, t.rank])));
+        setPaymentMethods(paymentData.paymentMethods || []);
         if (isInitial) setMenuLoading(false);
       })
       .catch(() => {
@@ -205,6 +194,7 @@ export default function ComoSeriaMenu() {
   const [agrandarPapas, setAgrandarPapas] = useState(false);
   const [editingCartId, setEditingCartId] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState(null);
+  const selectedPaymentAccounts = paymentMethods.find((m) => m.id === paymentMethod)?.accounts || [];
   const [deliveryType, setDeliveryType] = useState("recoger"); // "recoger" o "domicilio"
   const [deliveryLocation, setDeliveryLocation] = useState(null); // selección de ubicación
   const [deliveryAddress, setDeliveryAddress] = useState(""); // dirección
@@ -397,9 +387,9 @@ export default function ComoSeriaMenu() {
       msg += `*TOTAL: ${fmt(totalWithDelivery)}*\n\n`;
     }
     if (paymentMethod) {
-      const paymentLabel = PAYMENT_METHODS.find((m) => m.id === paymentMethod)?.label || paymentMethod;
-      msg += `💳 Método de pago: ${paymentLabel}\n`;
-      const accounts = PAYMENT_ACCOUNTS[paymentMethod] || [];
+      const selectedMethod = paymentMethods.find((m) => m.id === paymentMethod);
+      msg += `💳 Método de pago: ${selectedMethod?.label || paymentMethod}\n`;
+      const accounts = selectedMethod?.accounts || [];
       accounts.forEach((acc) => {
         msg += accounts.length > 1 ? `   ${acc.label}: ${acc.value}\n` : `   ${acc.value}\n`;
       });
@@ -1078,7 +1068,7 @@ export default function ComoSeriaMenu() {
                   <div className="payment-section">
                     <div className="delivery-title">💳 Método de Pago</div>
                     <div className="payment-options">
-                      {PAYMENT_METHODS.map((method) => (
+                      {paymentMethods.map((method) => (
                         <button
                           key={method.id}
                           className={`delivery-btn ${paymentMethod === method.id ? "active" : ""}`}
@@ -1088,9 +1078,9 @@ export default function ComoSeriaMenu() {
                         </button>
                       ))}
                     </div>
-                    {PAYMENT_ACCOUNTS[paymentMethod] && (
+                    {selectedPaymentAccounts.length > 0 && (
                       <div className="payment-accounts">
-                        {PAYMENT_ACCOUNTS[paymentMethod].map((acc) => (
+                        {selectedPaymentAccounts.map((acc) => (
                           <div key={acc.label} className="payment-account-row">
                             <div className="payment-account-info">
                               <span className="payment-account-label">{acc.label}</span>
