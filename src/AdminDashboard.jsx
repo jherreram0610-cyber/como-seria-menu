@@ -1013,7 +1013,9 @@ function ProductForm({ initial, categories, onSubmit, onCancel }) {
         popular,
         special: specialEdition,
         burgerImg,
-        burgerImgPosition: burgerImg ? serializeFramePosition(imgPosition) : null,
+        // Sin foto no hay encuadre que guardar, pero la columna es NOT NULL:
+        // se manda el valor por defecto, nunca null.
+        burgerImgPosition: burgerImg ? serializeFramePosition(imgPosition) : "50% 50%",
       });
     } catch (err) {
       setError(err.message || "No se pudo guardar");
