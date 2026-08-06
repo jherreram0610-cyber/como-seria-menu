@@ -57,6 +57,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       let value = body[key];
       if (key === "ingredients") value = JSON.stringify(value ?? []) as never;
       if (key === "price" && typeof value === "number") value = Math.round(value) as never;
+      // burger_img_position es NOT NULL en la base de datos, pero el formulario
+      // manda null cuando el producto no tiene foto — sin esto, guardar cualquier
+      // cambio (hasta el precio) en un producto sin foto revienta con un 500.
+      if (key === "burgerImgPosition" && !value) value = "50% 50%" as never;
       values.push(value);
       sets.push(`${FIELD_MAP[key]} = $${values.length}`);
     });
