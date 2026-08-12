@@ -1160,6 +1160,9 @@ body {
 }
 .adm-form-field input:focus, .adm-form-field select:focus, .adm-form-field textarea:focus { border-color: var(--green); outline: none; }
 .adm-form-field textarea { resize: vertical; min-height: 60px; }
+/* Texto de ayuda debajo de un campo. Hereda las variables de tema, así que
+   sigue siendo legible en claro y en oscuro. */
+.adm-form-hint { font-size: 11px; font-weight: 500; line-height: 1.45; color: var(--adm-text-dim); opacity: 0.8; }
 .adm-payment-account-row { display: flex; gap: 8px; align-items: center; }
 .adm-payment-account-row input { flex: 1; min-width: 0; }
 .adm-form-checks { display: flex; flex-direction: column; gap: 10px; }

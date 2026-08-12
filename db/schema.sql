@@ -144,3 +144,21 @@ insert into payment_methods (id, label, accounts, sort_order) values
 on conflict (id) do nothing;
 
 alter table payment_methods add column if not exists is_deleted boolean not null default false;
+
+-- Título de la sección donde el cliente quita ingredientes (ej. "Personalizar
+-- hamburguesa", "Personalizar perro"). Antes estaba fijo en el código y siempre
+-- decía "hamburguesa", incluso abriendo un combo de perro caliente.
+--
+-- Va en la categoría, no en cada producto, para que al crear una categoría nueva
+-- baste con escribirlo una vez. Un COMBO toma la etiqueta de la categoría del
+-- producto que incluye (menu_items.burger), no la suya: todos los combos viven
+-- en la misma categoría, así que la propia no distingue un combo de hamburguesa
+-- de uno de perro.
+--
+-- Vacío/null = se muestra el texto genérico "Ingredientes".
+alter table categories add column if not exists customize_label text;
+
+-- Se siembra la de hamburguesas con el texto que ya estaba fijo en el código,
+-- para que nada cambie hasta que el admin configure las demás.
+update categories set customize_label = 'Personalizar hamburguesa'
+  where id = 'hamburguesas' and customize_label is null;
