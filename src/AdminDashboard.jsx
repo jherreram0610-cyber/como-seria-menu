@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import logoImg from "/logo.svg";
 import {
   isBluetoothPrintingSupported,
@@ -954,7 +954,7 @@ function RecentOrders({ orders, onPrint, onDelete, highlightOrderId, paymentLabe
 
 
 // ─── FORMULARIO DE PRODUCTO ────────────────────────────────────────────────
-function ProductForm({ initial, categories, onSubmit, onCancel }) {
+function ProductForm({ initial, categories, menuData = {}, onSubmit, onCancel }) {
   const isEditing = !!initial?.id;
   const [category, setCategory] = useState(initial?.category || categories[0]?.id || "");
   const [name, setName] = useState(initial?.name || "");
@@ -971,6 +971,16 @@ function ProductForm({ initial, categories, onSubmit, onCancel }) {
   const [imgPosition, setImgPosition] = useState(() => parseFramePosition(initial?.burgerImgPosition));
   const [imageBusy, setImageBusy] = useState(false);
   const [imageError, setImageError] = useState("");
+
+  // Candidatos a "producto principal" de un combo: se excluyen los otros combos
+  // y los agregados (adiciones/bebidas), que se venden aparte y nunca son el plato.
+  const mainProductOptions = useMemo(
+    () =>
+      Object.entries(menuData)
+        .filter(([catId]) => !["combos", "adiciones", "bebidas"].includes(catId))
+        .flatMap(([, items]) => items || []),
+    [menuData]
+  );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -1051,8 +1061,26 @@ function ProductForm({ initial, categories, onSubmit, onCancel }) {
       </label>
       {category === "combos" && (
         <label className="adm-form-field">
-          Hamburguesa incluida
-          <input value={burger} onChange={(e) => setBurger(e.target.value)} placeholder="Nombre exacto de la hamburguesa" />
+          Producto principal incluido
+          {/* Con datalist se puede escribir libre o elegir de la lista. Elegirlo
+              evita errores de tipeo, y de eso depende que el cliente vea el
+              título correcto ("Personalizar perro" y no "hamburguesa"): el
+              combo hereda la etiqueta de la categoría de este producto. */}
+          <input
+            value={burger}
+            onChange={(e) => setBurger(e.target.value)}
+            placeholder="Nombre exacto del producto"
+            list="adm-main-products"
+          />
+          <datalist id="adm-main-products">
+            {mainProductOptions.map((p) => (
+              <option key={p.id} value={p.name} />
+            ))}
+          </datalist>
+          <span className="adm-form-hint">
+            De aquí sale el título que ve el cliente al personalizar. Configúralo en
+            Categorías → “Título al personalizar”.
+          </span>
         </label>
       )}
       {category === "bebidas" && (
@@ -1152,6 +1180,7 @@ function MenuManager({ menuData, categories, reload }) {
           <ProductForm
             initial={editingItem.id ? editingItem : null}
             categories={categories}
+            menuData={menuData}
             onSubmit={(payload) => (editingItem.id ? handleUpdate(editingItem.id, payload) : handleCreate(payload))}
             onCancel={() => setEditingItem(null)}
           />
@@ -1563,6 +1592,7 @@ function PaymentMethodsManager({ paymentMethods, reload }) {
 function CategoryForm({ initial, onSubmit, onCancel }) {
   const [label, setLabel] = useState(initial?.label || "");
   const [icon, setIcon] = useState(initial?.icon || "");
+  const [customizeLabel, setCustomizeLabel] = useState(initial?.customizeLabel || "");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
@@ -1575,7 +1605,7 @@ function CategoryForm({ initial, onSubmit, onCancel }) {
     setSaving(true);
     setError("");
     try {
-      await onSubmit({ label: label.trim(), icon: icon.trim() });
+      await onSubmit({ label: label.trim(), icon: icon.trim(), customizeLabel: customizeLabel.trim() });
     } catch (err) {
       setError(err.message || "No se pudo guardar");
       setSaving(false);
@@ -1591,6 +1621,18 @@ function CategoryForm({ initial, onSubmit, onCancel }) {
       <label className="adm-form-field">
         Ícono (emoji)
         <input value={icon} onChange={(e) => setIcon(e.target.value)} placeholder="🍰" maxLength={4} />
+      </label>
+      <label className="adm-form-field">
+        Título al personalizar (opcional)
+        <input
+          value={customizeLabel}
+          onChange={(e) => setCustomizeLabel(e.target.value)}
+          placeholder="Ej: Personalizar perro"
+        />
+        <span className="adm-form-hint">
+          Es el título que ve el cliente sobre los ingredientes que puede quitar. Los combos
+          usan el de la categoría del producto que incluyen. Si lo dejas vacío dice “Ingredientes”.
+        </span>
       </label>
       {error && <p className="adm-form-error">{error}</p>}
       <div className="adm-form-actions">

@@ -7,17 +7,26 @@ interface CategoryRow {
   id: string;
   label: string;
   icon: string;
+  customize_label: string | null;
   sort_order: number;
   is_active: boolean;
 }
 
 function rowToCategory(row: CategoryRow) {
-  return { id: row.id, label: row.label, icon: row.icon, isActive: row.is_active };
+  return {
+    id: row.id,
+    label: row.label,
+    icon: row.icon,
+    // Texto de la sección de personalización que ve el cliente; vacío = genérico.
+    customizeLabel: row.customize_label || "",
+    isActive: row.is_active,
+  };
 }
 
 interface CreateBody {
   label?: string;
   icon?: string;
+  customizeLabel?: string;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -46,11 +55,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const sortOrder = orderRows[0].next;
 
     const { rows } = await query(
-      `insert into categories (id, label, icon, sort_order) values ($1, $2, $3, $4) returning *`,
-      [id, label.trim(), icon, sortOrder]
+      `insert into categories (id, label, icon, customize_label, sort_order)
+       values ($1, $2, $3, $4, $5) returning *`,
+      [id, label.trim(), icon, body.customizeLabel?.trim() || null, sortOrder]
     );
 
-    return res.status(201).json({ category: rows[0] });
+    return res.status(201).json({ category: rowToCategory(rows[0] as CategoryRow) });
   }
 
   res.setHeader("Allow", "GET, POST");

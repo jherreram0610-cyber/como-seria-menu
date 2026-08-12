@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import logoImg from "/logo.svg";
 import AdminDashboard from "./AdminDashboard";
 import { parseFramePosition } from "./framePosition.js";
@@ -32,6 +32,18 @@ const SIDES = [
 ];
 
 const fmt = (n) => "$" + n.toLocaleString("es-CO");
+
+// Compara nombres de producto ignorando mayúsculas y tildes. Un combo apunta a
+// su producto principal por el nombre escrito en el panel, así que "Perro Clasico"
+// tiene que encontrar a "Perro Clásico" — si no, el cliente vería el título genérico.
+const normalizeName = (s) =>
+  String(s || "")
+    .trim()
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/\p{Diacritic}/gu, ""); // quita los acentos que NFD dejó sueltos
+
+const GENERIC_INGREDIENTS_TITLE = "🥬 Ingredientes";
 const formatAdicion = (a, itemQty = 1) => {
   const total = a.qty * itemQty;
   return total > 1 ? `${a.name} x${total}` : a.name;
@@ -84,6 +96,40 @@ export default function ComoSeriaMenu() {
   const [topProducts, setTopProducts] = useState({});
   const [categories, setCategories] = useState([]);
   const [paymentMethods, setPaymentMethods] = useState([]);
+
+  const categoryById = useMemo(
+    () => Object.fromEntries(categories.map((c) => [c.id, c])),
+    [categories]
+  );
+
+  // Título de la sección donde el cliente quita ingredientes. Sale del campo
+  // "Título al personalizar" de la categoría, no del código.
+  //
+  // Para un COMBO manda la categoría del producto que incluye, no la suya:
+  // todos los combos comparten categoría, así que la propia no distingue un
+  // combo de hamburguesa de uno de perro. Si el nombre no coincide con ningún
+  // producto (se renombró, se escribió mal), cae al texto genérico en vez de
+  // mentir con la etiqueta equivocada.
+  const customizeSectionTitle = useCallback(
+    (item) => {
+      let categoryId = item.category;
+      if (item.category === "combos" && item.burger) {
+        const target = normalizeName(item.burger);
+        // Se excluyen los combos de la búsqueda: el producto principal de un
+        // combo nunca es otro combo, y sin esto un combo que se llama igual que
+        // su producto (ej. "Perro Crunchy" existe como combo y como perro
+        // suelto) se encontraría a sí mismo y perdería la etiqueta.
+        const found = Object.entries(MENU)
+          .filter(([catId]) => catId !== "combos")
+          .find(([, items]) => (items || []).some((i) => normalizeName(i.name) === target));
+        categoryId = found ? found[0] : null;
+      }
+      const cat = categoryId ? categoryById[categoryId] : null;
+      if (!cat?.customizeLabel) return GENERIC_INGREDIENTS_TITLE;
+      return `${cat.icon || ""} ${cat.customizeLabel}`.trim();
+    },
+    [MENU, categoryById]
+  );
 
   // Carga el menú, las zonas de domicilio, las categorías y el ranking semanal
   // de más pedidos. En la carga inicial muestra el spinner/error de pantalla
@@ -761,7 +807,7 @@ export default function ComoSeriaMenu() {
               {modalItem.allowCustomization !== false && modalItem.ingredients && modalItem.ingredients.length > 0 && (
                 <div className="modal-section">
                   <div className="modal-section-title">
-                    {modalItem.category === "combos" ? "🍔 Personalizar hamburguesa" : "🥬 Ingredientes"}
+                    {customizeSectionTitle(modalItem)}
                     <span className="optional">(toca para quitar)</span>
                   </div>
                   <div className="ingredient-chips">

@@ -5,12 +5,14 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "vite build",
+    "build": "node scripts/migrate.mjs && vite build",
     "lint": "eslint .",
     "preview": "vite preview",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "db:seed": "node --env-file=.env scripts/seed-menu.mjs",
+    "db:migrate": "node --env-file=.env scripts/migrate.mjs",
+    "db:check": "node --env-file=.env scripts/check-customize-label.mjs",
     "dev:api": "node --env-file=.env scripts/dev-api-server.mjs"
   },
   "dependencies": {

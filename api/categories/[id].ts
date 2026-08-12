@@ -5,6 +5,7 @@ import { requireAdmin, verifyPasswordHash } from "../_lib/auth.js";
 interface UpdateBody {
   label?: string;
   icon?: string;
+  customizeLabel?: string;
   sortOrder?: number;
 }
 
@@ -34,6 +35,11 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (typeof body.icon === "string") {
       values.push(body.icon.trim() || "🍽️");
       sets.push(`icon = $${values.length}`);
+    }
+    if (typeof body.customizeLabel === "string") {
+      // Vacío se guarda como null: significa "usar el texto genérico".
+      values.push(body.customizeLabel.trim() || null);
+      sets.push(`customize_label = $${values.length}`);
     }
     if (typeof body.sortOrder === "number") {
       values.push(body.sortOrder);
