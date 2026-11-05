@@ -3,6 +3,11 @@ import logoImg from "/logo.svg";
 import AdminDashboard from "./AdminDashboard";
 import { parseFramePosition } from "./framePosition.js";
 import { PositionedImage } from "./imagePosition.jsx";
+import { getStoreStatus, formatScheduleSummary, DEFAULT_PAYMENT_NOTICE } from "../api/_lib/storeHours.ts";
+
+// Texto que había fijo antes de que el horario se configurara desde el panel.
+// Solo se usa si /api/store-settings no responde.
+const FALLBACK_SCHEDULE_TEXT = "mar-jue 5:30pm - 9:30pm | vie-dom y festivos 5:30pm - 10:00pm";
 
 // ─── ROUTING ─────────────────────────────────────────────────────────────────
 if (window.location.pathname === "/admin") {
@@ -96,6 +101,26 @@ export default function ComoSeriaMenu() {
   const [topProducts, setTopProducts] = useState({});
   const [categories, setCategories] = useState([]);
   const [paymentMethods, setPaymentMethods] = useState([]);
+  // Horario / pausa de pedidos. null = no se pudo cargar → no se bloquea nada
+  // (el backend igual tiene la última palabra al guardar el pedido).
+  const [storeSettings, setStoreSettings] = useState(null);
+  // Diferencia entre el reloj del servidor y el del celular, para que un
+  // teléfono con la hora mal puesta no vea "abierto" cuando ya cerró.
+  const [clockOffsetMs, setClockOffsetMs] = useState(0);
+  const [nowMs, setNowMs] = useState(() => Date.now());
+
+  useEffect(() => {
+    const t = setInterval(() => setNowMs(Date.now()), 30000);
+    return () => clearInterval(t);
+  }, []);
+
+  const storeStatus = useMemo(
+    () => (storeSettings ? getStoreStatus(storeSettings, new Date(nowMs + clockOffsetMs)) : null),
+    [storeSettings, nowMs, clockOffsetMs]
+  );
+  const storeClosed = storeStatus ? !storeStatus.isOpen : false;
+  const scheduleText = storeSettings ? formatScheduleSummary(storeSettings) : FALLBACK_SCHEDULE_TEXT;
+  const paymentNotice = storeSettings?.paymentNotice?.trim() || DEFAULT_PAYMENT_NOTICE;
 
   const categoryById = useMemo(
     () => Object.fromEntries(categories.map((c) => [c.id, c])),
@@ -151,8 +176,15 @@ export default function ComoSeriaMenu() {
       }),
       fetch("/api/top-products").then((r) => (r.ok ? r.json() : { top: [] })).catch(() => ({ top: [] })),
       fetch("/api/payment-methods").then((r) => (r.ok ? r.json() : { paymentMethods: [] })).catch(() => ({ paymentMethods: [] })),
+      fetch("/api/store-settings").then((r) => (r.ok ? r.json() : null)).catch(() => null),
     ])
-      .then(([menuData, deliveryData, categoryData, topData, paymentData]) => {
+      .then(([menuData, deliveryData, categoryData, topData, paymentData, storeData]) => {
+        if (storeData?.settings) {
+          setStoreSettings(storeData.settings);
+          const serverMs = Date.parse(storeData.serverNow);
+          if (Number.isFinite(serverMs)) setClockOffsetMs(serverMs - Date.now());
+          setNowMs(Date.now());
+        }
         setMENU(menuData);
         setDeliveryLocations(deliveryData.locations || []);
         setCategories(categoryData.categories || []);
@@ -174,6 +206,23 @@ export default function ComoSeriaMenu() {
     const interval = setInterval(() => loadMenuData(false), 60000);
     return () => clearInterval(interval);
   }, [loadMenuData]);
+
+  // Al abrir el carrito se vuelve a preguntar el horario/pausa en el momento,
+  // sin esperar al ciclo de 60 s: si el local acaba de pausar, el cliente lo ve
+  // antes de intentar enviar.
+  useEffect(() => {
+    if (!showCart) return;
+    fetch("/api/store-settings")
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data?.settings) return;
+        setStoreSettings(data.settings);
+        const serverMs = Date.parse(data.serverNow);
+        if (Number.isFinite(serverMs)) setClockOffsetMs(serverMs - Date.now());
+        setNowMs(Date.now());
+      })
+      .catch(() => {});
+  }, [showCart]);
 
   // Evaluar qué flechas mostrar según la posición del scroll
   const checkScrollArrows = useCallback(() => {
@@ -451,12 +500,19 @@ export default function ComoSeriaMenu() {
       msg += `🏠 Dirección: ${deliveryAddress}\n`;
       msg += "⏰ Confirmar tiempo estimado de entrega";
     }
+    // Queda escrito por el propio cliente: le recuerda (y le deja constancia
+    // al local) que el pago va DESPUÉS de la confirmación.
+    msg += "\n\n⏳ Espero la confirmación del pedido antes de realizar el pago.";
 
     return encodeURIComponent(msg);
   };
 
   const sendToWhatsApp = () => {
     if (cart.length === 0) return;
+    if (storeClosed) {
+      showToast("En este momento no estamos recibiendo pedidos");
+      return;
+    }
     if (!customerName.trim()) {
       setNameError(true);
       nameInputRef.current?.focus();
@@ -557,10 +613,25 @@ export default function ComoSeriaMenu() {
               <IconMapPin /> Country Mall, Jamundí
             </div>
             <div className="header-info-item">
-              <IconClock /> Horario: mar-jue 5:30pm - 9:30pm | vie-dom y festivos 5:30pm - 10:00pm
+              <IconClock /> Horario: {scheduleText}
             </div>
+            {storeStatus && (
+              <span className={`header-status-tag ${storeStatus.isOpen ? "open" : "closed"}`}>
+                {storeStatus.isOpen ? "Abierto" : storeStatus.reason === "paused" ? "Pausado" : "Cerrado"}
+              </span>
+            )}
           </div>
         </header>
+
+        {storeClosed && (
+          <div className="store-closed-banner" role="status">
+            <span className="store-closed-icon">🔴</span>
+            <div>
+              <strong>{storeStatus.title}</strong>
+              <p>{storeStatus.detail} Puedes ver el menú, pero los pedidos están desactivados.</p>
+            </div>
+          </div>
+        )}
 
         {/* CATEGORY NAV */}
         <div className="cat-nav-wrap">
@@ -1113,6 +1184,10 @@ export default function ComoSeriaMenu() {
 
                   <div className="payment-section">
                     <div className="delivery-title">💳 Método de Pago</div>
+                    <div className="payment-notice" role="note">
+                      <span className="payment-notice-icon">⚠️</span>
+                      <span>{paymentNotice}</span>
+                    </div>
                     <div className="payment-options">
                       {paymentMethods.map((method) => (
                         <button
@@ -1124,7 +1199,9 @@ export default function ComoSeriaMenu() {
                         </button>
                       ))}
                     </div>
-                    {selectedPaymentAccounts.length > 0 && (
+                    {/* Con el local cerrado no se muestran los números de cuenta:
+                        verlos invita a pagar un pedido que no se va a atender. */}
+                    {!storeClosed && selectedPaymentAccounts.length > 0 && (
                       <div className="payment-accounts">
                         {selectedPaymentAccounts.map((acc) => (
                           <div key={acc.label} className="payment-account-row">
@@ -1166,12 +1243,18 @@ export default function ComoSeriaMenu() {
                       <span className="cart-total-price">{fmt(cartTotal)}</span>
                     </div>
                   )}
+                  {storeClosed && (
+                    <div className="cart-closed-notice" role="status">
+                      <strong>🔴 {storeStatus.title}</strong>
+                      <p>{storeStatus.detail}</p>
+                    </div>
+                  )}
                   <button
-                    className={`cart-wa-btn ${!customerName.trim() || (deliveryType === "domicilio" && (!deliveryLocation || !deliveryAddress.trim())) || !paymentMethod ? "disabled" : ""}`}
+                    className={`cart-wa-btn ${storeClosed || !customerName.trim() || (deliveryType === "domicilio" && (!deliveryLocation || !deliveryAddress.trim())) || !paymentMethod ? "disabled" : ""}`}
                     id="btn-send-whatsapp"
                     onClick={sendToWhatsApp}
                   >
-                    <IconWhatsapp /> Enviar pedido por WhatsApp
+                    <IconWhatsapp /> {storeClosed ? "Pedidos desactivados por ahora" : "Enviar pedido por WhatsApp"}
                   </button>
                   {!customerName.trim() && (
                     <p className="wa-btn-hint">Escribe tu nombre arriba para enviar el pedido</p>

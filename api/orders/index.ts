@@ -2,6 +2,8 @@ import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { query } from "../_lib/db.js";
 import { requireAdmin } from "../_lib/auth.js";
 import { notifyPushSubscribers } from "../_lib/push.js";
+import { loadStoreSettings } from "../_lib/storeSettings.js";
+import { getStoreStatus } from "../_lib/storeHours.js";
 
 interface CreateOrderBody {
   customerName?: string;
@@ -31,6 +33,23 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     }
     if (!deliveryType) {
       return res.status(400).json({ error: "deliveryType es requerido" });
+    }
+
+    // Fuera de horario o con los pedidos pausados no se recibe nada. El menú ya
+    // desactiva el botón; esto cubre una pestaña que quedó abierta desde antes.
+    // Si la configuración no se puede leer (ej. migración pendiente) se deja
+    // pasar el pedido: es peor perder una venta que dejar entrar una de más.
+    let storeSettings = null;
+    try {
+      storeSettings = await loadStoreSettings();
+    } catch (err) {
+      console.error("No se pudo leer store_settings, se acepta el pedido:", err);
+    }
+    if (storeSettings) {
+      const status = getStoreStatus(storeSettings, new Date());
+      if (!status.isOpen) {
+        return res.status(409).json({ error: `${status.title}. ${status.detail}`, closed: true, status });
+      }
     }
 
     const { rows } = await query(

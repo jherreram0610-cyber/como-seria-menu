@@ -17,7 +17,9 @@ export default defineConfig({
     },
     proxy: {
       // Solo para desarrollo local (vite dev). En Vercel /api se sirve directamente.
-      '/api': process.env.VITE_API_PROXY_TARGET || 'http://localhost:3001',
+      // Se excluye /api/_lib/: ahí vive código compartido (ej. storeHours.ts)
+      // que el propio frontend importa y que Vite tiene que servir como módulo.
+      '^/api/(?!_lib/)': process.env.VITE_API_PROXY_TARGET || 'http://localhost:3001',
     },
   },
 })

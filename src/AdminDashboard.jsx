@@ -12,6 +12,16 @@ import {
 } from "./blePrinter.js";
 import { parseFramePosition, serializeFramePosition } from "./framePosition.js";
 import { ImageFrameEditor } from "./imagePosition.jsx";
+import {
+  getStoreStatus,
+  isPauseActive,
+  bogotaParts,
+  nextBogotaMidnight,
+  colombianHolidays,
+  formatTime12,
+  DEFAULT_PAUSE_MESSAGE,
+  DEFAULT_PAYMENT_NOTICE,
+} from "../api/_lib/storeHours.ts";
 
 const fmt = (n) => "$" + n.toLocaleString("es-CO");
 const formatAdicion = (a, itemQty = 1) => {
@@ -1588,6 +1598,304 @@ function PaymentMethodsManager({ paymentMethods, reload }) {
   );
 }
 
+// ─── HORARIO Y PAUSA DE PEDIDOS ─────────────────────────────────────────────
+// La regla de "abierto/cerrado" vive en api/_lib/storeHours.ts y es la misma
+// que usan el menú del cliente y /api/orders: lo que se ve aquí es exactamente
+// lo que ve el cliente.
+const WEEK_ORDER = [1, 2, 3, 4, 5, 6, 0]; // lunes → domingo
+const DAY_LABELS = ["Domingo", "Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado"];
+
+function formatDateKey(dateKey) {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("es-CO", { weekday: "short", day: "numeric", month: "short" });
+}
+
+function upcomingHolidays(fromDateKey, count) {
+  const year = Number(fromDateKey.slice(0, 4));
+  return [...colombianHolidays(year), ...colombianHolidays(year + 1)]
+    .filter(([key]) => key >= fromDateKey)
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(0, count);
+}
+
+function DayHoursRow({ label, sub, value, onChange }) {
+  return (
+    <div className={`adm-hours-row ${value.isOpen ? "" : "closed"}`}>
+      <label className="adm-form-check adm-hours-day">
+        <input type="checkbox" checked={value.isOpen} onChange={(e) => onChange({ ...value, isOpen: e.target.checked })} />
+        <span>
+          {label}
+          {sub && <small className="adm-hours-sub">{sub}</small>}
+        </span>
+      </label>
+      {value.isOpen ? (
+        <div className="adm-hours-times">
+          <input type="time" value={value.from} onChange={(e) => onChange({ ...value, from: e.target.value })} aria-label={`${label} abre`} />
+          <span>a</span>
+          <input type="time" value={value.to} onChange={(e) => onChange({ ...value, to: e.target.value })} aria-label={`${label} cierra`} />
+        </div>
+      ) : (
+        <span className="adm-hours-closed">Cerrado</span>
+      )}
+    </div>
+  );
+}
+
+const hoursProblem = (label, h) => {
+  if (!h.isOpen) return null;
+  if (!h.from || !h.to) return `${label}: falta la hora de apertura o de cierre`;
+  if (h.from === h.to) return `${label}: la hora de apertura y de cierre son iguales`;
+  return null;
+};
+
+function StoreHoursManager({ settings, reload, nowMs }) {
+  const [weekly, setWeekly] = useState(() => settings.weeklyHours.map((d) => ({ ...d })));
+  const [holidayEnabled, setHolidayEnabled] = useState(!!settings.holidayHours);
+  const [holiday, setHoliday] = useState(() => settings.holidayHours || { isOpen: true, from: "17:30", to: "22:00" });
+  const [paymentNotice, setPaymentNotice] = useState(settings.paymentNotice || "");
+  const [pauseMessage, setPauseMessage] = useState(settings.pauseMessage || "");
+  const [pauseDuration, setPauseDuration] = useState("today");
+  const [newSpecial, setNewSpecial] = useState({ date: "", isOpen: false, from: "17:30", to: "21:30", note: "" });
+  const [saving, setSaving] = useState(null); // "hours" | "pause" | "special" | null
+  const [error, setError] = useState("");
+  const [toast, setToast] = useState(null);
+
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2200);
+  };
+
+  const now = new Date(nowMs);
+  const status = getStoreStatus(settings, now);
+  const pauseActive = isPauseActive(settings, now);
+  const todayKey = bogotaParts(now).dateKey;
+
+  const save = async (kind, payload, okMsg) => {
+    setSaving(kind);
+    setError("");
+    try {
+      await api("/api/store-settings", { method: "PUT", body: JSON.stringify(payload) });
+      await reload();
+      showToast(okMsg);
+      return true;
+    } catch (err) {
+      setError(err.message || "No se pudo guardar");
+      return false;
+    } finally {
+      setSaving(null);
+    }
+  };
+
+  const pause = () => {
+    const pauseUntil = pauseDuration === "today" ? nextBogotaMidnight(new Date()).toISOString() : null;
+    save("pause", { ordersPaused: true, pauseMessage, pauseUntil }, "Pedidos pausados");
+  };
+  const resume = () => save("pause", { ordersPaused: false, pauseUntil: null }, "Pedidos reanudados");
+
+  const saveHours = () => {
+    const problems = [
+      ...WEEK_ORDER.map((wd) => hoursProblem(DAY_LABELS[wd], weekly[wd])),
+      holidayEnabled ? hoursProblem("Festivos", holiday) : null,
+    ].filter(Boolean);
+    if (problems.length) {
+      setError(problems[0]);
+      return;
+    }
+    save(
+      "hours",
+      { weeklyHours: weekly, holidayHours: holidayEnabled ? holiday : null, paymentNotice },
+      "Horario guardado"
+    );
+  };
+
+  const specialDays = [...settings.specialDays].sort((a, b) => a.date.localeCompare(b.date));
+
+  const addSpecial = async () => {
+    if (!newSpecial.date) return setError("Elige la fecha especial");
+    if (specialDays.some((s) => s.date === newSpecial.date)) return setError("Esa fecha ya está en la lista");
+    const problem = hoursProblem("La fecha especial", newSpecial);
+    if (problem) return setError(problem);
+    const entry = { ...newSpecial, note: newSpecial.note.trim() || undefined };
+    const ok = await save("special", { specialDays: [...specialDays, entry] }, "Fecha especial agregada");
+    if (ok) setNewSpecial({ date: "", isOpen: false, from: "17:30", to: "21:30", note: "" });
+  };
+
+  const removeSpecial = (date) =>
+    save("special", { specialDays: specialDays.filter((s) => s.date !== date) }, "Fecha especial quitada");
+
+  const pauseUntilText = (() => {
+    if (!settings.pauseUntil) return "Sigue pausado hasta que lo reactives.";
+    const until = bogotaParts(new Date(settings.pauseUntil));
+    if (until.minutes === 0) return `Se reactiva solo a la medianoche (al empezar el ${DAY_LABELS[until.weekday].toLowerCase()}).`;
+    const hhmm = `${String(Math.floor(until.minutes / 60)).padStart(2, "0")}:${String(until.minutes % 60).padStart(2, "0")}`;
+    return `Se reactiva solo el ${DAY_LABELS[until.weekday].toLowerCase()} a las ${formatTime12(hhmm)}.`;
+  })();
+
+  return (
+    <>
+      {error && <p className="adm-form-error adm-hours-error">{error}</p>}
+
+      {/* ── Estado + pausa ── */}
+      <div className="adm-section">
+        <div className="adm-section-title">Recepción de pedidos</div>
+        <div className={`adm-store-status ${status.isOpen ? "open" : status.reason}`}>
+          <div className="adm-store-status-dot" />
+          <div className="adm-store-status-text">
+            <strong>{status.isOpen ? "Recibiendo pedidos" : status.title}</strong>
+            <span>{status.detail}</span>
+            {pauseActive && <span>{pauseUntilText}</span>}
+          </div>
+        </div>
+
+        {pauseActive ? (
+          <div className="adm-pause-box">
+            <p className="adm-form-hint">
+              Mientras esté pausado, el menú se puede ver pero el botón de enviar pedido está desactivado.
+            </p>
+            <div>
+              <button className="adm-btn-primary" onClick={resume} disabled={saving === "pause"}>
+                {saving === "pause" ? <><span className="adm-btn-spinner" /> Reanudando...</> : "▶ Reanudar pedidos"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="adm-pause-box">
+            <p className="adm-form-hint">
+              Úsalo cuando el local no vaya a abrir, se quede sin insumos o esté saturado. Es independiente del horario.
+            </p>
+            <label className="adm-form-field">
+              Mensaje que verá el cliente
+              <input
+                value={pauseMessage}
+                onChange={(e) => setPauseMessage(e.target.value)}
+                placeholder={DEFAULT_PAUSE_MESSAGE}
+                maxLength={300}
+              />
+            </label>
+            <label className="adm-form-field">
+              ¿Hasta cuándo?
+              <select value={pauseDuration} onChange={(e) => setPauseDuration(e.target.value)}>
+                <option value="today">Solo por hoy (se reactiva solo a medianoche)</option>
+                <option value="manual">Hasta que lo reactive</option>
+              </select>
+            </label>
+            <div className="adm-form-actions">
+              <button className="adm-btn-danger" onClick={pause} disabled={saving === "pause"}>
+                {saving === "pause" ? <><span className="adm-btn-spinner" /> Pausando...</> : "⏸ Pausar pedidos"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* ── Horario semanal ── */}
+      <div className="adm-section">
+        <div className="adm-section-title">Horario semanal</div>
+        <p className="adm-form-hint adm-mb-10">
+          Fuera de este horario el menú no deja enviar pedidos y le dice al cliente cuándo vuelven a abrir.
+          Si la hora de cierre es menor que la de apertura (ej. 6:00pm a 1:00am) se entiende que cierra al día siguiente.
+        </p>
+        <div className="adm-hours-list">
+          {WEEK_ORDER.map((wd) => (
+            <DayHoursRow
+              key={wd}
+              label={DAY_LABELS[wd]}
+              value={weekly[wd]}
+              onChange={(v) => setWeekly((prev) => prev.map((d, i) => (i === wd ? v : d)))}
+            />
+          ))}
+        </div>
+
+        <label className="adm-form-check adm-mt-12">
+          <input type="checkbox" checked={holidayEnabled} onChange={(e) => setHolidayEnabled(e.target.checked)} />
+          Los festivos tienen su propio horario
+        </label>
+        {holidayEnabled ? (
+          <div className="adm-hours-list adm-mt-8">
+            <DayHoursRow label="Festivos" value={holiday} onChange={setHoliday} />
+          </div>
+        ) : (
+          <p className="adm-form-hint">Los festivos siguen el horario del día de la semana en que caen.</p>
+        )}
+        <p className="adm-form-hint adm-mt-8">
+          Próximos festivos:{" "}
+          {upcomingHolidays(todayKey, 3).map(([key, name]) => `${formatDateKey(key)} (${name})`).join(" · ")}
+        </p>
+
+        <label className="adm-form-field adm-mt-12">
+          Aviso de pago en el carrito
+          <textarea
+            value={paymentNotice}
+            onChange={(e) => setPaymentNotice(e.target.value)}
+            placeholder={DEFAULT_PAYMENT_NOTICE}
+            maxLength={500}
+          />
+          <span className="adm-form-hint">Vacío = se muestra el texto de ejemplo. Aparece arriba de los datos de Nequi / transferencia.</span>
+        </label>
+
+        <div className="adm-form-actions adm-mt-12">
+          <button className="adm-btn-primary" onClick={saveHours} disabled={saving === "hours"}>
+            {saving === "hours" ? <><span className="adm-btn-spinner" /> Guardando...</> : "Guardar horario"}
+          </button>
+        </div>
+      </div>
+
+      {/* ── Fechas especiales ── */}
+      <div className="adm-section">
+        <div className="adm-section-title">Fechas especiales</div>
+        <p className="adm-form-hint adm-mb-10">
+          Para un día puntual que no sigue el horario normal: un cierre por vacaciones, un festivo en que no abren o un día con horario distinto. Manda sobre todo lo demás.
+        </p>
+        {specialDays.length === 0 && <p className="adm-menu-empty">No hay fechas especiales.</p>}
+        {specialDays.map((s) => (
+          <div key={s.date} className={`adm-menu-row ${s.date < todayKey ? "inactive" : ""}`}>
+            <div className="adm-menu-row-info">
+              <div className="adm-menu-row-name">
+                {formatDateKey(s.date)}
+                {s.date < todayKey && <span className="adm-inactive-tag">Pasada</span>}
+              </div>
+              <div className="adm-menu-row-price">
+                {s.isOpen ? `${formatTime12(s.from)} - ${formatTime12(s.to)}` : "Cerrado"}
+                {s.note ? ` · ${s.note}` : ""}
+              </div>
+            </div>
+            <div className="adm-menu-row-actions">
+              <button className="adm-btn-ghost adm-btn-sm" disabled={saving === "special"} onClick={() => removeSpecial(s.date)}>
+                Quitar
+              </button>
+            </div>
+          </div>
+        ))}
+
+        <div className="adm-special-form">
+          <label className="adm-form-field">
+            Fecha
+            <input type="date" min={todayKey} value={newSpecial.date} onChange={(e) => setNewSpecial((p) => ({ ...p, date: e.target.value }))} />
+          </label>
+          <label className="adm-form-field">
+            Motivo (opcional)
+            <input value={newSpecial.note} maxLength={60} placeholder="Ej: Vacaciones" onChange={(e) => setNewSpecial((p) => ({ ...p, note: e.target.value }))} />
+          </label>
+          <div className="adm-hours-list">
+            <DayHoursRow
+              label="Abre ese día"
+              value={newSpecial}
+              onChange={(v) => setNewSpecial((p) => ({ ...p, isOpen: v.isOpen, from: v.from, to: v.to }))}
+            />
+          </div>
+          <div className="adm-form-actions">
+            <button className="adm-btn-primary" onClick={addSpecial} disabled={saving === "special"}>
+              {saving === "special" ? <><span className="adm-btn-spinner" /> Guardando...</> : "+ Agregar fecha"}
+            </button>
+          </div>
+        </div>
+      </div>
+
+      {toast && <div className="adm-toast">✓ {toast}</div>}
+    </>
+  );
+}
+
 // ─── FORMULARIO DE CATEGORÍA ────────────────────────────────────────────────
 function CategoryForm({ initial, onSubmit, onCancel }) {
   const [label, setLabel] = useState(initial?.label || "");
@@ -2224,6 +2532,9 @@ export default function AdminDashboard() {
   const [locations, setLocations] = useState([]);
   const [categories, setCategories] = useState([]);
   const [paymentMethods, setPaymentMethods] = useState([]);
+  const [storeSettings, setStoreSettings] = useState(null);
+  const [storeNowMs, setStoreNowMs] = useState(() => Date.now());
+  const storeStatus = storeSettings ? getStoreStatus(storeSettings, new Date(storeNowMs)) : null;
   const paymentLabels = {
     ...FALLBACK_PAYMENT_LABELS,
     ...Object.fromEntries(paymentMethods.map((p) => [p.id, p.label])),
@@ -2548,6 +2859,10 @@ export default function AdminDashboard() {
     api("/api/payment-methods?all=1").then((d) => setPaymentMethods(d.paymentMethods || [])).catch(() => {});
   }, []);
 
+  const loadStoreSettings = useCallback(() => {
+    return api("/api/store-settings").then((d) => setStoreSettings(d.settings || null)).catch(() => {});
+  }, []);
+
   useEffect(() => {
     if (authState !== "unlocked") return;
     loadOrders();
@@ -2555,9 +2870,19 @@ export default function AdminDashboard() {
     loadLocations();
     loadCategories();
     loadPaymentMethods();
+    loadStoreSettings();
     const interval = setInterval(loadOrders, 7000);
-    return () => clearInterval(interval);
-  }, [authState, loadOrders, loadMenu, loadLocations, loadCategories, loadPaymentMethods]);
+    // El estado "abierto/cerrado" cambia con la hora aunque nadie toque nada;
+    // además se relee la configuración por si otro dispositivo pausó.
+    const storeInterval = setInterval(() => {
+      setStoreNowMs(Date.now());
+      loadStoreSettings();
+    }, 30000);
+    return () => {
+      clearInterval(interval);
+      clearInterval(storeInterval);
+    };
+  }, [authState, loadOrders, loadMenu, loadLocations, loadCategories, loadPaymentMethods, loadStoreSettings]);
 
   const handlePin = async (e) => {
     e.preventDefault();
@@ -2733,6 +3058,16 @@ export default function AdminDashboard() {
             </div>
           </div>
           <div className="adm-header-actions">
+            {storeStatus && (
+              <button
+                className={`adm-store-pill ${storeStatus.isOpen ? "open" : storeStatus.reason}`}
+                onClick={() => setTab("horario")}
+                title="Ver horario y pausa de pedidos"
+              >
+                <span className="adm-store-pill-dot" />
+                {storeStatus.isOpen ? "Abierto" : storeStatus.reason === "paused" ? "Pausado" : "Cerrado"}
+              </button>
+            )}
             <button
               className="adm-export-btn adm-theme-toggle"
               onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
@@ -2792,13 +3127,13 @@ export default function AdminDashboard() {
       <main className="adm-main">
         {/* Tabs */}
         <div className="adm-tabs">
-          {["resumen", "pedidos", "menu", "categorias", "domicilios", "pagos"].map((t) => (
+          {["resumen", "pedidos", "menu", "categorias", "domicilios", "pagos", "horario"].map((t) => (
             <button
               key={t}
               className={`adm-tab ${tab === t ? "active" : ""}`}
               onClick={() => setTab(t)}
             >
-              {t === "resumen" ? "📊 Resumen" : t === "pedidos" ? "📋 Pedidos" : t === "menu" ? "🍔 Menú" : t === "categorias" ? "🗂️ Categorías" : t === "domicilios" ? "🛵 Domicilios" : "💳 Pagos"}
+              {t === "resumen" ? "📊 Resumen" : t === "pedidos" ? "📋 Pedidos" : t === "menu" ? "🍔 Menú" : t === "categorias" ? "🗂️ Categorías" : t === "domicilios" ? "🛵 Domicilios" : t === "pagos" ? "💳 Pagos" : "🕒 Horario"}
             </button>
           ))}
           <div className="adm-live-badge">
@@ -2970,6 +3305,16 @@ export default function AdminDashboard() {
         {tab === "domicilios" && <DeliveryManager locations={locations} reload={loadLocations} />}
 
         {tab === "pagos" && <PaymentMethodsManager paymentMethods={paymentMethods} reload={loadPaymentMethods} />}
+
+        {tab === "horario" && (
+          storeSettings ? (
+            <StoreHoursManager settings={storeSettings} reload={loadStoreSettings} nowMs={storeNowMs} />
+          ) : (
+            <p className="adm-menu-empty">
+              No se pudo cargar el horario. Si acabas de desplegar, revisa que la migración de store_settings se haya aplicado.
+            </p>
+          )
+        )}
 
         {/* Info notice */}
         <div className="adm-notice">

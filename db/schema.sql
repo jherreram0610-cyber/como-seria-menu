@@ -162,3 +162,32 @@ alter table categories add column if not exists customize_label text;
 -- para que nada cambie hasta que el admin configure las demás.
 update categories set customize_label = 'Personalizar hamburguesa'
   where id = 'hamburguesas' and customize_label is null;
+
+-- Horario de atención, pausa de pedidos y aviso de pago (una sola fila).
+-- Ver db/migrations/2026-11-04-store-settings.sql para el detalle de cada campo.
+create table if not exists store_settings (
+  id              text primary key default 'singleton',
+  weekly_hours    jsonb not null,
+  holiday_hours   jsonb,
+  special_days    jsonb not null default '[]',
+  orders_paused   boolean not null default false,
+  pause_message   text,
+  pause_until     timestamptz,
+  payment_notice  text,
+  updated_at      timestamptz not null default now()
+);
+
+insert into store_settings (id, weekly_hours, holiday_hours) values (
+  'singleton',
+  '[
+    {"isOpen": true,  "from": "17:30", "to": "22:00"},
+    {"isOpen": false, "from": "17:30", "to": "21:30"},
+    {"isOpen": true,  "from": "17:30", "to": "21:30"},
+    {"isOpen": true,  "from": "17:30", "to": "21:30"},
+    {"isOpen": true,  "from": "17:30", "to": "21:30"},
+    {"isOpen": true,  "from": "17:30", "to": "22:00"},
+    {"isOpen": true,  "from": "17:30", "to": "22:00"}
+  ]',
+  '{"isOpen": true, "from": "17:30", "to": "22:00"}'
+)
+on conflict (id) do nothing;

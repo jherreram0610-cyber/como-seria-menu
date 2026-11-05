@@ -53,6 +53,7 @@ const routes = [
   { pattern: /^\/api\/orders\/([^/]+)$/, file: "orders/[id].ts", paramNames: ["id"] },
   { pattern: /^\/api\/orders$/, file: "orders/index.ts" },
   { pattern: /^\/api\/top-products$/, file: "top-products.ts" },
+  { pattern: /^\/api\/store-settings$/, file: "store-settings.ts" },
   { pattern: /^\/api\/admin\/login$/, file: "admin/login.ts" },
   { pattern: /^\/api\/admin\/logout$/, file: "admin/logout.ts" },
   { pattern: /^\/api\/admin\/me$/, file: "admin/me.ts" },

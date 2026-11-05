@@ -115,13 +115,29 @@ body {
   border: 2px solid var(--black);
 }
 .header-info {
-  display: flex; align-items: center; gap: 16px; padding-top: 10px;
+  display: flex; align-items: center; gap: 8px 16px; flex-wrap: wrap; padding-top: 10px;
   border-top: 1px solid rgba(255,255,255,0.08);
 }
 .header-info-item {
   display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--gray-300);
 }
 .header-info-item svg { color: var(--green-light); flex-shrink: 0; }
+.header-status-tag {
+  font-size: 10px; font-weight: 700; padding: 3px 10px; border-radius: 20px;
+  letter-spacing: 0.5px; text-transform: uppercase; margin-left: auto; white-space: nowrap;
+}
+.header-status-tag.open { background: rgba(27,140,55,0.18); color: var(--green-light); }
+.header-status-tag.closed { background: rgba(217,65,65,0.2); color: #FF8A8A; }
+/* Franja bajo el encabezado cuando el local está cerrado o en pausa. */
+.store-closed-banner {
+  display: flex; gap: 10px; align-items: flex-start;
+  margin: 12px 16px 0; padding: 12px 16px;
+  background: #FDECEC; border: 1.5px solid var(--red); border-radius: 12px;
+  color: #8A1F1F; font-size: 13px; line-height: 1.45;
+}
+.store-closed-banner strong { display: block; font-size: 14px; }
+.store-closed-banner p { margin: 2px 0 0; }
+.store-closed-icon { flex-shrink: 0; font-size: 14px; line-height: 1.5; }
 .header-mode-tag {
   background: rgba(27,140,55,0.18); color: var(--green-light);
   font-size: 10px; font-weight: 600; padding: 3px 10px; border-radius: 20px;
@@ -428,6 +444,22 @@ body {
 .cart-item-action.delete:hover { background: rgba(217,65,65,0.06); }
 .cart-item-action.edit:hover { background: rgba(34, 111, 255, 0.08); }
 .payment-section { margin-top: 16px; }
+/* Aviso "espera la confirmación antes de pagar". Va justo debajo del título,
+   ANTES de que aparezcan los números de cuenta, para que se lea primero. */
+.payment-notice {
+  display: flex; gap: 8px; align-items: flex-start;
+  background: #FFF6E0; border: 1.5px solid #F2C14E; border-radius: 10px;
+  padding: 10px 12px; margin-bottom: 4px;
+  font-size: 13px; line-height: 1.45; font-weight: 600; color: #6B4A00;
+}
+.payment-notice-icon { flex-shrink: 0; font-size: 15px; line-height: 1.3; }
+.cart-closed-notice {
+  margin-top: 16px; padding: 12px 14px; border-radius: 10px;
+  background: #FDECEC; border: 1.5px solid var(--red); color: #8A1F1F;
+  font-size: 13px; line-height: 1.45; text-align: center;
+}
+.cart-closed-notice strong { display: block; font-size: 14px; margin-bottom: 2px; }
+.cart-closed-notice p { margin: 0; }
 .payment-options { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 10px; }
 .payment-accounts { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
 .payment-account-row {
@@ -923,6 +955,61 @@ body {
 }
 .adm-datepicker-footer button:hover { text-decoration: underline; }
 .adm-mt-12 { margin-top: 12px; }
+.adm-mt-8 { margin-top: 8px; }
+.adm-mb-10 { margin-bottom: 10px; }
+
+/* ─── HORARIO Y PAUSA DE PEDIDOS ─── */
+.adm-store-pill {
+  display: inline-flex; align-items: center; gap: 6px; padding: 8px 14px; border-radius: 50px;
+  font-family: 'DM Sans', sans-serif; font-size: 13px; font-weight: 700; cursor: pointer;
+  border: 1.5px solid transparent; white-space: nowrap; transition: filter 0.2s;
+}
+.adm-store-pill:hover { filter: brightness(1.15); }
+.adm-store-pill.open { background: rgba(27,140,55,0.15); color: var(--green-light); border-color: rgba(27,140,55,0.4); }
+.adm-store-pill.closed { background: var(--adm-overlay-subtle); color: var(--adm-text-dim); border-color: var(--adm-border-light); }
+.adm-store-pill.paused { background: rgba(217,65,65,0.15); color: var(--red); border-color: rgba(217,65,65,0.45); }
+.adm-store-pill-dot { width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+.adm-store-pill.open .adm-store-pill-dot { animation: pulse 1.5s ease-in-out infinite; }
+
+.adm-store-status {
+  display: flex; gap: 14px; align-items: flex-start; padding: 16px 18px; border-radius: 14px;
+  background: var(--adm-surface); border: 1.5px solid var(--adm-border); margin-bottom: 14px;
+}
+.adm-store-status.open { border-color: rgba(27,140,55,0.5); }
+.adm-store-status.paused { border-color: rgba(217,65,65,0.55); }
+.adm-store-status-dot { width: 12px; height: 12px; border-radius: 50%; margin-top: 5px; flex-shrink: 0; background: var(--adm-text-dimmer); }
+.adm-store-status.open .adm-store-status-dot { background: var(--green-light); animation: pulse 1.5s ease-in-out infinite; }
+.adm-store-status.paused .adm-store-status-dot { background: var(--red); }
+.adm-store-status-text { display: flex; flex-direction: column; gap: 3px; font-size: 13px; color: var(--adm-text-dim); }
+.adm-store-status-text strong { font-size: 16px; color: var(--adm-text); }
+
+.adm-pause-box { display: flex; flex-direction: column; gap: 12px; max-width: 480px; }
+.adm-hours-error { margin-bottom: 14px; }
+
+.adm-hours-list { display: flex; flex-direction: column; gap: 6px; max-width: 520px; }
+.adm-hours-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  padding: 10px 14px; border-radius: 12px; background: var(--adm-surface); border: 1.5px solid var(--adm-border);
+}
+.adm-hours-row.closed { background: transparent; }
+.adm-hours-day { font-weight: 600; color: var(--adm-text); min-width: 130px; }
+.adm-hours-row.closed .adm-hours-day { color: var(--adm-text-dim); }
+.adm-hours-sub { display: block; font-size: 11px; font-weight: 500; color: var(--adm-text-dim); }
+.adm-hours-times { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--adm-text-dim); }
+.adm-hours-times input {
+  padding: 6px 8px; border-radius: 8px; border: 1.5px solid var(--adm-border-light); background: var(--adm-surface-alt);
+  color: var(--adm-text); font-family: 'DM Sans', sans-serif; font-size: 13px;
+}
+/* Para que el ícono del reloj/calendario nativo se vea en el tema oscuro. */
+[data-theme="dark"] .adm-hours-times input, [data-theme="dark"] .adm-special-form input { color-scheme: dark; }
+[data-theme="light"] .adm-hours-times input, [data-theme="light"] .adm-special-form input { color-scheme: light; }
+.adm-hours-times input:focus { border-color: var(--green); outline: none; }
+.adm-hours-closed { font-size: 12px; font-weight: 600; color: var(--adm-text-dimmer); text-transform: uppercase; letter-spacing: 0.5px; }
+
+.adm-special-form {
+  display: flex; flex-direction: column; gap: 12px; max-width: 520px; margin-top: 14px;
+  padding: 14px; border-radius: 12px; border: 1.5px dashed var(--adm-border-light);
+}
 
 /* ─── PRODUCT RANKING ─── */
 .adm-ranking-list { background: var(--adm-surface); border: 1.5px solid var(--adm-border); border-radius: 16px; overflow: hidden; }
