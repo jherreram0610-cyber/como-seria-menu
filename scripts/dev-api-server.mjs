@@ -50,6 +50,8 @@ const routes = [
   { pattern: /^\/api\/categories$/, file: "categories/index.ts" },
   { pattern: /^\/api\/payment-methods\/([^/]+)$/, file: "payment-methods/[id].ts", paramNames: ["id"] },
   { pattern: /^\/api\/payment-methods$/, file: "payment-methods/index.ts" },
+  { pattern: /^\/api\/combo-options\/([^/]+)$/, file: "combo-options/[id].ts", paramNames: ["id"] },
+  { pattern: /^\/api\/combo-options$/, file: "combo-options/index.ts" },
   { pattern: /^\/api\/orders\/([^/]+)$/, file: "orders/[id].ts", paramNames: ["id"] },
   { pattern: /^\/api\/orders$/, file: "orders/index.ts" },
   { pattern: /^\/api\/top-products$/, file: "top-products.ts" },

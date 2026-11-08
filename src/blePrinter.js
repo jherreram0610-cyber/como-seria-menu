@@ -197,7 +197,8 @@ export function buildComandaEscPos(order) {
     if (item.adiciones?.length > 0) {
       item.adiciones.forEach((a) => { out += `+ ${formatAdicion(a, item.qty)}\n`; });
     }
-    if (item.agrandarPapas) out += "Papas grandes\n";
+    if (item.agrandarPapas) out += "Papas grandes\n"; // pedidos anteriores a las mejoras configurables
+    (item.mejoras || []).forEach((m) => { out += `+ ${m.name}\n`; });
     if (item.comment) out += `Nota: ${item.comment}\n`;
   });
 
