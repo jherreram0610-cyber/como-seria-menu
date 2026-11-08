@@ -283,7 +283,9 @@ function describeItem(item) {
   if (item.adiciones?.length) {
     parts.push(`Adiciones: ${item.adiciones.map((a) => formatAdicion(a, item.qty)).join(", ")}`);
   }
+  // Pedidos anteriores a las mejoras configurables guardaban "agrandarPapas" (fijo en $2.000).
   if (item.agrandarPapas) parts.push(`Papas grandes (+${fmt(2000)})`);
+  (item.mejoras || []).forEach((m) => parts.push(`${m.name}${m.price > 0 ? ` (+${fmt(m.price)})` : ""}`));
   if (item.comment) parts.push(`Nota: ${item.comment}`);
   return parts.join(" | ");
 }
@@ -801,6 +803,9 @@ function OrderDetail({ order, paymentLabels }) {
             <div className="adm-order-item-line">➕ {item.adiciones.map((a) => formatAdicion(a, item.qty)).join(", ")}</div>
           )}
           {item.agrandarPapas && <div className="adm-order-item-line">🍟 Papas grandes</div>}
+          {(item.mejoras || []).map((m) => (
+            <div key={m.id} className="adm-order-item-line">⭐ {m.name}</div>
+          ))}
           {item.comment && <div className="adm-order-item-line">💬 {item.comment}</div>}
         </div>
       ))}
@@ -963,8 +968,49 @@ function RecentOrders({ orders, onPrint, onDelete, highlightOrderId, paymentLabe
 }
 
 
+// ─── LISTA DE OPCIONES PERMITIDAS POR PRODUCTO ─────────────────────────────
+// Casilla marcada = el cliente la puede elegir en este producto. Se guarda la
+// lista de las DESMARCADAS, así una opción nueva aparece sola en todos los
+// productos sin tener que ir a marcarla en cada uno.
+function OptionChecklist({ title, hint, items, excluded, onChange, priceLabel }) {
+  if (items.length === 0) return null;
+  const excludedSet = new Set(excluded);
+  const toggle = (id) => {
+    onChange(excludedSet.has(id) ? excluded.filter((x) => x !== id) : [...excluded, id]);
+  };
+  const allowedCount = items.filter((i) => !excludedSet.has(i.id)).length;
+  // "Todas"/"Ninguna" solo tocan las opciones de ESTA lista: acompañamientos y
+  // mejoras comparten la misma lista de excluidas.
+  const ownIds = new Set(items.map((i) => i.id));
+  const others = excluded.filter((id) => !ownIds.has(id));
+  return (
+    <div className="adm-form-field adm-option-checklist">
+      <div className="adm-option-checklist-head">
+        <span>{title} <span className="adm-option-count">{allowedCount} de {items.length}</span></span>
+        <span className="adm-option-checklist-actions">
+          <button type="button" className="adm-btn-ghost adm-btn-sm" onClick={() => onChange(others)}>Todas</button>
+          <button type="button" className="adm-btn-ghost adm-btn-sm" onClick={() => onChange([...others, ...ownIds])}>Ninguna</button>
+        </span>
+      </div>
+      {hint && <span className="adm-form-hint">{hint}</span>}
+      <div className="adm-option-grid">
+        {items.map((item) => (
+          <label key={item.id} className={`adm-option-chip ${excludedSet.has(item.id) ? "off" : ""}`}>
+            <input type="checkbox" checked={!excludedSet.has(item.id)} onChange={() => toggle(item.id)} />
+            <span className="adm-option-chip-name">
+              {item.name}
+              {item.isActive === false && <span className="adm-option-chip-note">apagada en todo el menú</span>}
+            </span>
+            {priceLabel && <span className="adm-option-chip-price">{priceLabel(item)}</span>}
+          </label>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ─── FORMULARIO DE PRODUCTO ────────────────────────────────────────────────
-function ProductForm({ initial, categories, menuData = {}, onSubmit, onCancel }) {
+function ProductForm({ initial, categories, menuData = {}, comboOptions = [], onSubmit, onCancel }) {
   const isEditing = !!initial?.id;
   const [category, setCategory] = useState(initial?.category || categories[0]?.id || "");
   const [name, setName] = useState(initial?.name || "");
@@ -981,6 +1027,19 @@ function ProductForm({ initial, categories, menuData = {}, onSubmit, onCancel })
   const [imgPosition, setImgPosition] = useState(() => parseFramePosition(initial?.burgerImgPosition));
   const [imageBusy, setImageBusy] = useState(false);
   const [imageError, setImageError] = useState("");
+  const [excludedAdiciones, setExcludedAdiciones] = useState(initial?.excludedAdiciones || []);
+  const [excludedBebidas, setExcludedBebidas] = useState(initial?.excludedBebidas || []);
+  const [excludedComboOptions, setExcludedComboOptions] = useState(initial?.excludedComboOptions || []);
+  const [defaultBebida, setDefaultBebida] = useState(initial?.defaultBebida || "");
+
+  const isCombo = category === "combos";
+  // Las adiciones y bebidas se venden solas: no llevan adiciones encima.
+  const takesAdiciones = !["adiciones", "bebidas"].includes(category);
+  const adicionItems = menuData.adiciones || [];
+  const bebidaItems = menuData.bebidas || [];
+  const sideItems = comboOptions.filter((o) => o.kind === "acompanamiento");
+  const mejoraItems = comboOptions.filter((o) => o.kind === "mejora");
+  const allowedBebidas = bebidaItems.filter((b) => !excludedBebidas.includes(b.id));
 
   // Candidatos a "producto principal" de un combo: se excluyen los otros combos
   // y los agregados (adiciones/bebidas), que se venden aparte y nunca son el plato.
@@ -1036,6 +1095,11 @@ function ProductForm({ initial, categories, menuData = {}, onSubmit, onCancel })
         // Sin foto no hay encuadre que guardar, pero la columna es NOT NULL:
         // se manda el valor por defecto, nunca null.
         burgerImgPosition: burgerImg ? serializeFramePosition(imgPosition) : "50% 50%",
+        excludedAdiciones: takesAdiciones ? excludedAdiciones : [],
+        excludedBebidas: isCombo ? excludedBebidas : [],
+        excludedComboOptions: isCombo ? excludedComboOptions : [],
+        // Si la bebida por defecto se desmarcó, se olvida: el menú usaría la primera permitida.
+        defaultBebida: isCombo && defaultBebida && !excludedBebidas.includes(defaultBebida) ? defaultBebida : null,
       });
     } catch (err) {
       setError(err.message || "No se pudo guardar");
@@ -1117,6 +1181,61 @@ function ProductForm({ initial, categories, menuData = {}, onSubmit, onCancel })
           Edición especial (destacada con banner, como "Cali Vibes")
         </label>
       </div>
+      {(isCombo || (takesAdiciones && allowCustomization)) && (
+        <div className="adm-option-block">
+          <div className="adm-option-block-title">Lo que el cliente puede elegir en este producto</div>
+          <span className="adm-form-hint">
+            Desmarca lo que NO quieras ofrecer en este producto. Para quitar algo de TODO el menú,
+            desactívalo en su propia lista{isCombo ? " (Menú → Adiciones / Bebidas, o la pestaña Opciones combo)" : " (Menú → Adiciones)"}.
+          </span>
+          {takesAdiciones && allowCustomization && (
+            <OptionChecklist
+              title="➕ Adiciones"
+              items={adicionItems}
+              excluded={excludedAdiciones}
+              onChange={setExcludedAdiciones}
+              priceLabel={(a) => `+${fmt(a.price)}`}
+            />
+          )}
+          {isCombo && (
+            <>
+              <OptionChecklist
+                title="🥤 Bebidas del combo"
+                items={bebidaItems}
+                excluded={excludedBebidas}
+                onChange={setExcludedBebidas}
+                priceLabel={(b) => (b.comboExtra ? `+${fmt(b.comboExtra)}` : "Incluida")}
+              />
+              {allowedBebidas.length > 0 && (
+                <label className="adm-form-field">
+                  Bebida que viene marcada
+                  <select value={allowedBebidas.some((b) => b.id === defaultBebida) ? defaultBebida : ""} onChange={(e) => setDefaultBebida(e.target.value)}>
+                    <option value="">La primera de la lista ({allowedBebidas[0].name})</option>
+                    {allowedBebidas.map((b) => (
+                      <option key={b.id} value={b.id}>{b.name}</option>
+                    ))}
+                  </select>
+                </label>
+              )}
+              <OptionChecklist
+                title="🍟 Acompañamientos (el cliente elige uno)"
+                hint="El primero marcado es el que viene incluido por defecto."
+                items={sideItems}
+                excluded={excludedComboOptions}
+                onChange={setExcludedComboOptions}
+                priceLabel={(o) => (o.price > 0 ? `+${fmt(o.price)}` : "Incluido")}
+              />
+              <OptionChecklist
+                title="⭐ Mejoras opcionales"
+                items={mejoraItems}
+                excluded={excludedComboOptions}
+                onChange={setExcludedComboOptions}
+                priceLabel={(o) => (o.price > 0 ? `+${fmt(o.price)}` : "Gratis")}
+              />
+            </>
+          )}
+        </div>
+      )}
       <div className="adm-form-field">
         Foto del producto (opcional)
         <input type="file" accept="image/*" onChange={handleImageChange} />
@@ -1141,7 +1260,7 @@ function ProductForm({ initial, categories, menuData = {}, onSubmit, onCancel })
 }
 
 // ─── ADMINISTRACIÓN DE MENÚ ────────────────────────────────────────────────
-function MenuManager({ menuData, categories, reload }) {
+function MenuManager({ menuData, categories, comboOptions, reload }) {
   const [editingItem, setEditingItem] = useState(null);
   const [deletingItem, setDeletingItem] = useState(null);
   const [busyId, setBusyId] = useState(null);
@@ -1191,6 +1310,7 @@ function MenuManager({ menuData, categories, reload }) {
             initial={editingItem.id ? editingItem : null}
             categories={categories}
             menuData={menuData}
+            comboOptions={comboOptions}
             onSubmit={(payload) => (editingItem.id ? handleUpdate(editingItem.id, payload) : handleCreate(payload))}
             onCancel={() => setEditingItem(null)}
           />
@@ -1375,6 +1495,211 @@ function DeliveryManager({ locations, reload }) {
             </div>
           ))}
         </div>
+      )}
+      {toast && <div className="adm-toast">✓ {toast}</div>}
+    </>
+  );
+}
+
+// ─── OPCIONES DE COMBO (acompañamientos y mejoras) ─────────────────────────
+// Antes estaban fijas en el código del menú (Papas, Papas Lemon Pepper, Aros
+// de Cebolla, Papas Grandes) y no se podían quitar ni cambiar de precio.
+const COMBO_OPTION_KIND_INFO = {
+  acompanamiento: {
+    title: "🍟 Acompañamientos",
+    hint: "Vienen incluidos en el combo; el cliente elige UNO. El primero de la lista es el que viene marcado.",
+    newLabel: "+ Nuevo acompañamiento",
+  },
+  mejora: {
+    title: "⭐ Mejoras opcionales",
+    hint: "Extras que el cliente puede marcar o no en el combo (ej. Papas Grandes).",
+    newLabel: "+ Nueva mejora",
+  },
+};
+
+function ComboOptionForm({ initial, kind, onSubmit, onCancel }) {
+  const [name, setName] = useState(initial?.name || "");
+  const [price, setPrice] = useState(initial?.price ?? 0);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (e) => {
+    e.preventDefault();
+    if (!name.trim() || price === "" || Number(price) < 0) {
+      setError("Nombre y precio son obligatorios");
+      return;
+    }
+    setSaving(true);
+    setError("");
+    try {
+      await onSubmit({ kind, name: name.trim(), price: Number(price) });
+    } catch (err) {
+      setError(err.message || "No se pudo guardar");
+      setSaving(false);
+    }
+  };
+
+  return (
+    <form className="adm-product-form" onSubmit={submit}>
+      <label className="adm-form-field">
+        Nombre
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder={kind === "mejora" ? "Ej: Papas Grandes" : "Ej: Aros de Cebolla"} />
+      </label>
+      <label className="adm-form-field">
+        Precio adicional
+        <input type="number" min="0" value={price} onChange={(e) => setPrice(e.target.value)} placeholder="0" />
+        <span className="adm-form-hint">Pon 0 si no cuesta más (se mostrará como “Incluido”).</span>
+      </label>
+      {error && <p className="adm-form-error">{error}</p>}
+      <div className="adm-form-actions">
+        <button type="button" className="adm-btn-ghost" onClick={onCancel}>Cancelar</button>
+        <button type="submit" className="adm-btn-primary" disabled={saving}>
+          {saving ? <><span className="adm-btn-spinner" /> Guardando...</> : "Guardar"}
+        </button>
+      </div>
+    </form>
+  );
+}
+
+function ComboOptionsManager({ comboOptions, reload }) {
+  // { kind, option? } — option presente = editando; ausente = creando.
+  const [editing, setEditing] = useState(null);
+  const [deletingItem, setDeletingItem] = useState(null);
+  const [busyId, setBusyId] = useState(null);
+  const [error, setError] = useState("");
+  const [toast, setToast] = useState(null);
+
+  const showToast = (msg) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 2200);
+  };
+
+  const handleSubmit = async (payload) => {
+    if (editing.option) {
+      await api(`/api/combo-options/${editing.option.id}`, {
+        method: "PUT",
+        body: JSON.stringify({ name: payload.name, price: payload.price }),
+      });
+      showToast("Opción actualizada");
+    } else {
+      await api("/api/combo-options", { method: "POST", body: JSON.stringify(payload) });
+      showToast("Opción creada");
+    }
+    setEditing(null);
+    reload();
+  };
+
+  const runBusy = async (id, fn) => {
+    setBusyId(id);
+    setError("");
+    try {
+      await fn();
+      reload();
+    } catch (err) {
+      setError(err.message || "No se pudo actualizar");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const toggleActive = (opt) =>
+    runBusy(opt.id, async () => {
+      const willActivate = opt.isActive === false;
+      await api(`/api/combo-options/${opt.id}`, { method: "PATCH", body: JSON.stringify({ isActive: willActivate }) });
+      showToast(willActivate ? "Opción activada" : "Opción desactivada");
+    });
+
+  // Subir/bajar: se renumera la lista completa de ese tipo para que el orden
+  // quede limpio aunque haya valores repetidos de antes.
+  const move = (list, index, delta) => {
+    const target = index + delta;
+    if (target < 0 || target >= list.length) return;
+    const reordered = [...list];
+    [reordered[index], reordered[target]] = [reordered[target], reordered[index]];
+    return runBusy(list[index].id, () =>
+      Promise.all(
+        reordered.map((opt, i) =>
+          api(`/api/combo-options/${opt.id}`, { method: "PUT", body: JSON.stringify({ sortOrder: i }) })
+        )
+      )
+    );
+  };
+
+  if (editing) {
+    const info = COMBO_OPTION_KIND_INFO[editing.kind];
+    return (
+      <div className="adm-section">
+        <div className="adm-section-title">
+          {editing.option ? `Editar: ${editing.option.name}` : info.newLabel.replace("+ ", "")}
+        </div>
+        <ComboOptionForm
+          initial={editing.option}
+          kind={editing.kind}
+          onSubmit={handleSubmit}
+          onCancel={() => setEditing(null)}
+        />
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <div className="adm-section">
+        <div className="adm-section-title">Opciones de combo</div>
+        <p className="adm-form-hint adm-combo-options-intro">
+          Aquí se manejan para <b>todos</b> los combos. “Desactivar” la oculta del menú y se puede volver a
+          activar; “Eliminar” la quita para siempre. Para quitarla solo de <b>un</b> combo, edita ese combo en
+          la pestaña Menú y desmárcala.
+        </p>
+        {error && <p className="adm-form-error">{error}</p>}
+        {Object.entries(COMBO_OPTION_KIND_INFO).map(([kind, info]) => {
+          const list = comboOptions.filter((o) => o.kind === kind);
+          return (
+            <div key={kind} className="adm-menu-category">
+              <div className="adm-menu-category-title adm-combo-kind-title">
+                <span>{info.title}</span>
+                <button className="adm-btn-primary adm-btn-sm" onClick={() => setEditing({ kind })}>{info.newLabel}</button>
+              </div>
+              <p className="adm-form-hint">{info.hint}</p>
+              {list.length === 0 && <p className="adm-menu-empty">No hay opciones de este tipo.</p>}
+              {list.map((opt, i) => (
+                <div key={opt.id} className={`adm-menu-row ${opt.isActive === false ? "inactive" : ""}`}>
+                  <div className="adm-menu-row-info">
+                    <div className="adm-menu-row-name">
+                      {opt.name}
+                      {opt.isActive === false && <span className="adm-inactive-tag">Desactivado</span>}
+                    </div>
+                    <div className="adm-menu-row-price">{opt.price > 0 ? `+${fmt(opt.price)}` : "Incluido"}</div>
+                  </div>
+                  <div className="adm-menu-row-actions">
+                    <button className="adm-btn-ghost adm-btn-sm" title="Subir" disabled={i === 0 || busyId !== null} onClick={() => move(list, i, -1)}>↑</button>
+                    <button className="adm-btn-ghost adm-btn-sm" title="Bajar" disabled={i === list.length - 1 || busyId !== null} onClick={() => move(list, i, 1)}>↓</button>
+                    <button className="adm-btn-ghost adm-btn-sm" onClick={() => setEditing({ kind, option: opt })}>Editar</button>
+                    <button className="adm-btn-ghost adm-btn-sm" disabled={busyId === opt.id} onClick={() => toggleActive(opt)}>
+                      {opt.isActive === false ? "Activar" : "Desactivar"}
+                    </button>
+                    <button className="adm-btn-ghost adm-btn-sm adm-btn-danger-ghost" onClick={() => setDeletingItem(opt)}>
+                      Eliminar
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+      {deletingItem && (
+        <DeleteConfirmModal
+          title="Eliminar opción de combo"
+          message={`¿Eliminar "${deletingItem.name}" de todos los combos? Esta acción no se puede deshacer. Si solo quieres ocultarla por un tiempo, usa "Desactivar".`}
+          onClose={() => setDeletingItem(null)}
+          onConfirm={async (pin) => {
+            await api(`/api/combo-options/${deletingItem.id}`, { method: "DELETE", body: JSON.stringify({ pin }) });
+            setDeletingItem(null);
+            reload();
+            showToast("Opción eliminada");
+          }}
+        />
       )}
       {toast && <div className="adm-toast">✓ {toast}</div>}
     </>
@@ -2532,6 +2857,7 @@ export default function AdminDashboard() {
   const [locations, setLocations] = useState([]);
   const [categories, setCategories] = useState([]);
   const [paymentMethods, setPaymentMethods] = useState([]);
+  const [comboOptions, setComboOptions] = useState([]);
   const [storeSettings, setStoreSettings] = useState(null);
   const [storeNowMs, setStoreNowMs] = useState(() => Date.now());
   const storeStatus = storeSettings ? getStoreStatus(storeSettings, new Date(storeNowMs)) : null;
@@ -2859,6 +3185,10 @@ export default function AdminDashboard() {
     api("/api/payment-methods?all=1").then((d) => setPaymentMethods(d.paymentMethods || [])).catch(() => {});
   }, []);
 
+  const loadComboOptions = useCallback(() => {
+    api("/api/combo-options?all=1").then((d) => setComboOptions(d.comboOptions || [])).catch(() => {});
+  }, []);
+
   const loadStoreSettings = useCallback(() => {
     return api("/api/store-settings").then((d) => setStoreSettings(d.settings || null)).catch(() => {});
   }, []);
@@ -2870,6 +3200,7 @@ export default function AdminDashboard() {
     loadLocations();
     loadCategories();
     loadPaymentMethods();
+    loadComboOptions();
     loadStoreSettings();
     const interval = setInterval(loadOrders, 7000);
     // El estado "abierto/cerrado" cambia con la hora aunque nadie toque nada;
@@ -2882,7 +3213,7 @@ export default function AdminDashboard() {
       clearInterval(interval);
       clearInterval(storeInterval);
     };
-  }, [authState, loadOrders, loadMenu, loadLocations, loadCategories, loadPaymentMethods, loadStoreSettings]);
+  }, [authState, loadOrders, loadMenu, loadLocations, loadCategories, loadPaymentMethods, loadComboOptions, loadStoreSettings]);
 
   const handlePin = async (e) => {
     e.preventDefault();
@@ -3127,13 +3458,22 @@ export default function AdminDashboard() {
       <main className="adm-main">
         {/* Tabs */}
         <div className="adm-tabs">
-          {["resumen", "pedidos", "menu", "categorias", "domicilios", "pagos", "horario"].map((t) => (
+          {[
+            ["resumen", "📊 Resumen"],
+            ["pedidos", "📋 Pedidos"],
+            ["menu", "🍔 Menú"],
+            ["opciones", "🍟 Opciones combo"],
+            ["categorias", "🗂️ Categorías"],
+            ["domicilios", "🛵 Domicilios"],
+            ["pagos", "💳 Pagos"],
+            ["horario", "🕒 Horario"],
+          ].map(([t, label]) => (
             <button
               key={t}
               className={`adm-tab ${tab === t ? "active" : ""}`}
               onClick={() => setTab(t)}
             >
-              {t === "resumen" ? "📊 Resumen" : t === "pedidos" ? "📋 Pedidos" : t === "menu" ? "🍔 Menú" : t === "categorias" ? "🗂️ Categorías" : t === "domicilios" ? "🛵 Domicilios" : t === "pagos" ? "💳 Pagos" : "🕒 Horario"}
+              {label}
             </button>
           ))}
           <div className="adm-live-badge">
@@ -3298,7 +3638,9 @@ export default function AdminDashboard() {
           </>
         )}
 
-        {tab === "menu" && <MenuManager menuData={menuData} categories={categories} reload={loadMenu} />}
+        {tab === "menu" && <MenuManager menuData={menuData} categories={categories} comboOptions={comboOptions} reload={loadMenu} />}
+
+        {tab === "opciones" && <ComboOptionsManager comboOptions={comboOptions} reload={loadComboOptions} />}
 
         {tab === "categorias" && <CategoryManager categories={categories} reload={loadCategories} />}
 

@@ -1,6 +1,7 @@
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { query } from "../_lib/db.js";
 import { requireAdmin, verifyPasswordHash } from "../_lib/auth.js";
+import { sanitizeIdList } from "../_lib/menu.js";
 
 interface UpdateBody {
   name?: string;
@@ -16,7 +17,13 @@ interface UpdateBody {
   isBurgerMaster?: boolean;
   burgerImg?: string | null;
   burgerImgPosition?: string | null;
+  excludedAdiciones?: string[];
+  excludedBebidas?: string[];
+  excludedComboOptions?: string[];
+  defaultBebida?: string | null;
 }
+
+const ID_LIST_FIELDS = new Set<keyof UpdateBody>(["excludedAdiciones", "excludedBebidas", "excludedComboOptions"]);
 
 const MAX_BURGER_IMG_LENGTH = 1_500_000; // ~1.1MB de imagen ya en base64
 
@@ -34,6 +41,10 @@ const FIELD_MAP: Record<keyof UpdateBody, string> = {
   isBurgerMaster: "is_burger_master",
   burgerImg: "burger_img",
   burgerImgPosition: "burger_img_position",
+  excludedAdiciones: "excluded_adiciones",
+  excludedBebidas: "excluded_bebidas",
+  excludedComboOptions: "excluded_combo_options",
+  defaultBebida: "default_bebida",
 };
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -52,9 +63,17 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const sets: string[] = [];
     const values: unknown[] = [];
 
+    for (const key of ID_LIST_FIELDS) {
+      if (key in body && !sanitizeIdList(body[key])) {
+        return res.status(400).json({ error: "Las opciones excluidas deben ser listas de ids" });
+      }
+    }
+
     (Object.keys(FIELD_MAP) as (keyof UpdateBody)[]).forEach((key) => {
       if (!(key in body)) return;
       let value = body[key];
+      if (ID_LIST_FIELDS.has(key)) value = JSON.stringify(sanitizeIdList(value)) as never;
+      if (key === "defaultBebida" && !value) value = null as never;
       if (key === "ingredients") value = JSON.stringify(value ?? []) as never;
       if (key === "price" && typeof value === "number") value = Math.round(value) as never;
       // burger_img_position es NOT NULL en la base de datos, pero el formulario

@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import type { VercelRequest, VercelResponse } from "@vercel/node";
 import { query } from "../_lib/db.js";
 import { isAdminRequest, requireAdmin } from "../_lib/auth.js";
-import { groupByCategory, type MenuItemRow, type Category } from "../_lib/menu.js";
+import { groupByCategory, sanitizeIdList, type MenuItemRow, type Category } from "../_lib/menu.js";
 
 interface CreateBody {
   category?: Category;
@@ -19,6 +19,10 @@ interface CreateBody {
   isBurgerMaster?: boolean;
   burgerImg?: string;
   burgerImgPosition?: string;
+  excludedAdiciones?: string[];
+  excludedBebidas?: string[];
+  excludedComboOptions?: string[];
+  defaultBebida?: string | null;
 }
 
 const MAX_BURGER_IMG_LENGTH = 1_500_000; // ~1.1MB de imagen ya en base64
@@ -67,6 +71,12 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     if (body.burgerImg && body.burgerImg.length > MAX_BURGER_IMG_LENGTH) {
       return res.status(400).json({ error: "La imagen es demasiado grande" });
     }
+    const excludedAdiciones = sanitizeIdList(body.excludedAdiciones ?? []);
+    const excludedBebidas = sanitizeIdList(body.excludedBebidas ?? []);
+    const excludedComboOptions = sanitizeIdList(body.excludedComboOptions ?? []);
+    if (!excludedAdiciones || !excludedBebidas || !excludedComboOptions) {
+      return res.status(400).json({ error: "Las opciones excluidas deben ser listas de ids" });
+    }
 
     const id = crypto.randomUUID();
     const { rows: orderRows } = await query(
@@ -77,8 +87,9 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
     const { rows } = await query(
       `insert into menu_items
-        (id, category, name, price, description, ingredients, burger, combo_extra, allow_customization, is_new, popular, special, is_burger_master, burger_img, burger_img_position, sort_order)
-       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+        (id, category, name, price, description, ingredients, burger, combo_extra, allow_customization, is_new, popular, special, is_burger_master, burger_img, burger_img_position, sort_order,
+         excluded_adiciones, excluded_bebidas, excluded_combo_options, default_bebida)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
        returning *`,
       [
         id,
@@ -97,6 +108,10 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         body.burgerImg || null,
         body.burgerImgPosition || "50% 50%",
         sortOrder,
+        JSON.stringify(excludedAdiciones),
+        JSON.stringify(excludedBebidas),
+        JSON.stringify(excludedComboOptions),
+        body.defaultBebida || null,
       ]
     );
 

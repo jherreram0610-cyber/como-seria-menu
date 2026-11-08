@@ -1254,6 +1254,32 @@ body {
 .adm-payment-account-row input { flex: 1; min-width: 0; }
 .adm-form-checks { display: flex; flex-direction: column; gap: 10px; }
 .adm-form-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--adm-text-dim); cursor: pointer; }
+
+/* Opciones permitidas por producto (formulario de producto) */
+.adm-option-block {
+  display: flex; flex-direction: column; gap: 14px; padding: 14px;
+  border: 1.5px dashed var(--adm-border-light); border-radius: 12px;
+}
+.adm-option-block-title { font-size: 13px; font-weight: 700; color: var(--adm-text); }
+.adm-option-checklist-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.adm-option-checklist-actions { display: flex; gap: 6px; }
+.adm-option-count {
+  font-size: 11px; font-weight: 600; color: var(--green); margin-left: 6px;
+}
+.adm-option-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
+.adm-option-chip {
+  display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-radius: 10px; cursor: pointer;
+  border: 1.5px solid var(--green); background: rgba(45, 170, 133, 0.08);
+  color: var(--adm-text); font-size: 13px; font-weight: 500;
+}
+.adm-option-chip.off { border-color: var(--adm-border-light); background: transparent; color: var(--adm-text-dim); }
+.adm-option-chip.off .adm-option-chip-name { text-decoration: line-through; opacity: 0.7; }
+.adm-option-chip input { accent-color: var(--green); width: 16px; height: 16px; flex-shrink: 0; }
+.adm-option-chip-name { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.adm-option-chip-note { font-size: 10px; font-weight: 600; color: var(--red); text-decoration: none; }
+.adm-option-chip-price { font-size: 12px; font-weight: 600; color: var(--green); white-space: nowrap; }
+.adm-combo-kind-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap; }
+.adm-combo-options-intro { margin-bottom: 14px; }
 .adm-form-error { font-size: 12px; color: var(--red); }
 .adm-form-actions { display: flex; gap: 10px; justify-content: flex-end; }
 .adm-btn-spinner {

@@ -21,6 +21,18 @@ export interface MenuItemRow {
   burger_img_position: string | null;
   sort_order: number;
   is_active: boolean;
+  excluded_adiciones: string[] | null;
+  excluded_bebidas: string[] | null;
+  excluded_combo_options: string[] | null;
+  default_bebida: string | null;
+}
+
+// Listas de ids que el producto NO permite (adiciones, bebidas del combo,
+// acompañamientos/mejoras del combo). Vacía = permite todo.
+export function sanitizeIdList(value: unknown): string[] | null {
+  if (!Array.isArray(value)) return null;
+  if (!value.every((v) => typeof v === "string" && v.length > 0 && v.length <= 100)) return null;
+  return [...new Set(value as string[])];
 }
 
 export function rowToItem(row: MenuItemRow) {
@@ -33,6 +45,10 @@ export function rowToItem(row: MenuItemRow) {
     ingredients: row.ingredients || [],
     allowCustomization: row.allow_customization,
     isActive: row.is_active,
+    excludedAdiciones: row.excluded_adiciones || [],
+    excludedBebidas: row.excluded_bebidas || [],
+    excludedComboOptions: row.excluded_combo_options || [],
+    defaultBebida: row.default_bebida || null,
   };
   if (row.burger) item.burger = row.burger;
   if (row.combo_extra != null) item.comboExtra = row.combo_extra;
